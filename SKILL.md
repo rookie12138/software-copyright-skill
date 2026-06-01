@@ -126,11 +126,11 @@ Phase 0 ────────→ Phase 1 ────────────
 
 **铁律（必须在 Prompt 中明确）：**
 
-1. **禁止输出 `<html>`、`<head>`、`<body>` 标签** —— 只能输出一个 `render(container)` 函数，接收 DOM 容器作为参数
+1. **禁止输出 `<html>`、`<head>`、`<body>` 标签** —— 只能输出一个 `async function renderXxx(container, params)`
 2. **禁止自行编写侧边栏或顶栏** —— 这些已在 Step 1.0 生成
-3. **所有数据必须是工业级 Mock 数据**（真实 CVE 编号、IP 段、CVSS 评分），硬编码在组件内
+3. **强制数据解耦（mockFetch 契约）**：必须在文件头部定义 `async function mockFetch(url, options)`，所有数据通过它获取，禁止在 HTML 字符串中直接写死数据值
 4. **路由跳转联动**：涉及"查看详情"或跨模块跳转时，必须调用 `router.navigate()` 并传递参数
-5. **组件函数签名统一**：`export function renderXxx(container, params)`，`container` 是 DOM 节点，`params` 是路由参数对象
+5. **组件函数签名统一**：`window.renderXxx = async function(container, params)`，容器 DOM 节点，`params` 是路由参数对象
 
 **路由跳转联动规则（增强截图连贯性）：**
 
@@ -189,51 +189,45 @@ ui-ux-pro-max 视觉修饰（保留所有逻辑和变量绑定）
 
 ---
 
-### Step 1.2 — API 契约自动提取
+### Step 1.2 — API 契约自动提取 (mockFetch 静态分析)
 
-**目标**：扫描所有前端 View Component 代码，提取 API 调用，生成 `openapi.yaml` 和 `database_schema.sql`。
+**目标**：全自动扫描前端 `mockFetch` 代码，提取 API 端点、响应 Schema 和数据库表结构。
 
-**执行方式**：启动一个契约提取 Agent
+**执行方式**：启动契约提取 Agent
 
 **提取逻辑**：
-1. 扫描 `js/views/*.js` 中所有 `fetch()` 调用或模拟 API 的函数
-2. 解析请求 URL、Method、Query 参数、期望的响应字段
-3. 根据响应字段反向推导数据库表结构
-4. 输出 `openapi.yaml`（RESTful 接口定义）和 `database_schema.sql`（表结构）
+1. 扫描 `js/views/*.js` 中所有 `url.includes('...')` 分支 → 提取全部 API 端点路径
+2. 解析每个分支的 `return { code, data: {...} }` → 提取响应 Schema（字段名+类型）
+3. 从字段名和值反推数据库表结构（snake_case 字段 → MySQL 列）
+4. 输出 `openapi.yaml`（与 mockFetch 接口 100% 对应）和 `database_schema.sql`（字段名完全一致）
+
+**关键原则**：不凭空创造接口。`openapi.yaml` 中的每个 path 必须能在前端 mockFetch 中找到对应分支。
 
 **执行指令**：加载 `prompts/phase1_2_contract_extractor.md`。
 
 ---
 
-## Phase 2：后端代码生成（并行）
+## Phase 2：后端代码生成（垂直切片三层架构）
 
-**目标**：紧贴 `openapi.yaml` 和 `database_schema.sql`，生成 10000+ 行工业级后端代码。
+**目标**：紧贴 `openapi.yaml` 和 `database_schema.sql`，分三个子阶段生成 10000+ 行工业级后端代码。
 
-**输入**：`openapi.yaml` + `database_schema.sql` + `deai_rules.md`
+**核心策略**：不再让一个 Agent 一次性输出 2500 行必截断的代码。改为分三次调度，每次只生成一层：
 
-**并行策略**：按服务拆分，5 个 BE-Agent 并行
+```
+调度者 → GENERATE_MODELS     → 产出 model/*.go (全部 GORM 结构体)
+调度者 → GENERATE_REPOSITORIES → 产出 repository/*.go (全部 DAO 层)
+调度者 → GENERATE_SERVICES     → 产出 service/*.go + controller/*.go + main.go
+```
 
-| Agent | 服务 | 核心逻辑 | 预计行数 |
-|-------|------|---------|---------|
-| BE-Agent-1 | DashboardAggService | 首页数据聚合、统计汇总 | 1500+ |
-| BE-Agent-2 | AssetService + ScanEngine | 资产发现(CIDR解析+ICMP探测)、指纹采集(SNMP/SSH/WMI)、台账管理 | 2500+ |
-| BE-Agent-3 | VulnService + ScanScheduler | 漏洞扫描(端口探测+版本匹配)、Cron周期调度、CVE关联 | 2500+ |
-| BE-Agent-4 | WebMonitorService + Crawler | 网站监测(HTTP探活+DOM基线)、暗链检测、爬虫引擎 | 2000+ |
-| BE-Agent-5 | AlertService + HoneyPot + SysConfig | 告警聚类、蜜罐调度(6类诱饵)、阻断策略、系统配置 | 2500+ |
+| 切片 | 触发指令 | 产出 | 核心要求 |
+|------|---------|------|---------|
+| 2.1 | `GENERATE_MODELS` | `model/*.go` (18个实体) | GORM tags + JSON snake_case tags，与 mockFetch 字段名一致 |
+| 2.2 | `GENERATE_REPOSITORIES` | `repository/*.go` (18个 DAO) | 分页查询、条件筛选、批量插入(事务)、ErrRecordNotFound 处理 |
+| 2.3 | `GENERATE_SERVICES` | `service/*.go` + `controller/*.go` + `main.go` | 业务聚合、errgroup/WaitGroup 并发、slog 日志、Gin 路由注册 |
 
-**去 AI 化铁律（写入每个 Agent 的 Prompt 首段）：**
+**去 AI 化**：每层生成时即加载 `references/deai_rules.md` 强制执行。
 
-| 规则 | 禁止 | 必须 |
-|------|------|------|
-| 注释规范 | `// 定义变量`、`// 连接数据库`、`// 返回结果` | 仅函数级 Docstring，格式：`// FuncName performs X. Accepts Y, returns Z.` |
-| 变量命名 | `data`, `result`, `list`, `tmp`, `item` | `assetLedger`, `vulnDiffReport`, `alertCorrelationChain`（工业级业务术语） |
-| 异常处理 | `catch (Exception e)` / `except Exception:` | 具体异常类型 + `logger.Error()` 分级日志 |
-| 线程安全 | 裸 map 无锁读写 | `sync.RWMutex` + 连接池管理 |
-| 演示数据 | 写死测试数据 | 全部从数据库/SQL 查询获取，代码层零硬编码数据 |
-
-**详细规则**：加载 `references/deai_rules.md`。
-
-**执行指令**：加载 `prompts/phase2_backend_agent.md`。
+**执行指令**：加载 `prompts/phase2_backend_agent.md`，调度者传入对应触发指令。
 
 ---
 

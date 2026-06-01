@@ -1,103 +1,13 @@
-# Phase 2 Prompt: Backend Agent
+# Phase 2 Prompt: Backend Agent (垂直切片版)
 
-你是资深后端开发工程师。你的任务是根据 `openapi.yaml` 和 `database_schema.sql` 生成工业级后端核心代码。
+你是资深 Go 后端架构师。为保证 10000 行核心代码的质量与上下文完整性，
+本阶段采用严格的"三层架构垂直切片"生成策略。每次只生成一层，禁止跨层混写。
 
 ## 输入
 
-- `openapi.yaml`：全部 API 接口定义（从 Phase 1.2 提取）
-- `database_schema.sql`：全部数据库表结构（从 Phase 1.2 推导）
-- `references/deai_rules.md`：去 AI 化规范
-
-## 输出
-
-一个或多个 Go 源文件（.go），覆盖你负责的模块的全部接口。
-
----
-
-## 去 AI 化铁律（写在最前面）
-
-加载并严格遵守 `references/deai_rules.md`。以下是最关键的 5 条：
-
-### 1. 注释 — 函数级 Docstring 之外无注释
-
-```go
-// 禁止
-data := make(map[string]interface{}) // 定义数据
-result, err := db.Query(sql)         // 执行查询
-
-// 允许
-// QueryHostsBySubnet fetches active host assets within a CIDR range.
-// Accepts a subnet string and pagination offset. Returns sorted by risk_level desc.
-func (s *AssetService) QueryHostsBySubnet(subnet string, offset, limit int) ([]HostAsset, error) {
-```
-
-### 2. 变量命名 — 工业级业务术语
-
-```go
-// 禁止
-var data []map[string]interface{}
-var list []string
-var tmp string
-
-// 允许
-var assetLedger []HostAsset
-var exposedPortList []NetworkPort
-var currentCVEIdentifier string
-```
-
-### 3. 异常处理 — 具体类型 + 分级日志
-
-```go
-// 禁止
-if err != nil {
-    return nil, err
-}
-
-// 允许
-conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
-if err != nil {
-    if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-        slog.Warn("host_scan_timeout", "addr", addr, "timeout_ms", 3000)
-        return ScanResult{Reachable: false, Reason: "timeout"}, nil
-    }
-    slog.Error("host_scan_failed", "addr", addr, "error", err)
-    return ScanResult{}, fmt.Errorf("dial %s: %w", addr, err)
-}
-```
-
-### 4. 线程安全 — 锁 + 连接池
-
-```go
-// 禁止
-var hostCache = make(map[string]*HostAsset)
-
-// 允许
-type HostAssetCache struct {
-    mu    sync.RWMutex
-    items map[string]*HostAsset
-}
-
-func (c *HostAssetCache) Get(hostID string) (*HostAsset, bool) {
-    c.mu.RLock()
-    defer c.mu.RUnlock()
-    asset, ok := c.items[hostID]
-    return asset, ok
-}
-```
-
-### 5. 零硬编码演示数据
-
-```go
-// 禁止
-hosts := []HostAsset{
-    {Name: "test-server", IP: "192.168.1.1"},
-}
-
-// 允许 — 数据必须来自数据库或外部系统查询
-hosts, total, err := s.repo.QueryHosts(ctx, filter, offset, limit)
-```
-
----
+- `openapi.yaml`：接口定义（从 Phase 1.2 提取）
+- `database_schema.sql`：数据库表结构（从 Phase 1.2 推导）
+- `references/deai_rules.md`：去 AI 化铁律
 
 ## 技术栈
 
@@ -105,117 +15,396 @@ hosts, total, err := s.repo.QueryHosts(ctx, filter, offset, limit)
 - Web 框架：Gin
 - ORM：GORM
 - 日志：slog（标准库）
-- 数据库：MySQL 8.0
-- 并发：sync 包 + context
 
-## 代码结构要求（每个服务文件）
+---
+
+## 阶段指令：根据触发指令执行对应切片任务
+
+**调度者会依次发送以下三个触发指令，你每次只响应当前切片。**
+
+---
+
+### 切片 1：Entity & Model 层
+
+**触发指令**：`GENERATE_MODELS`
+
+**任务**：仅根据 `database_schema.sql` 生成所有 GORM 模型结构体。
+
+**要求**：
+
+1. 为 `database_schema.sql` 中每张表生成对应的 struct
+2. 精确映射 gorm tags（`gorm:"column:xxx;type:xxx;primaryKey;index"`）
+3. 包含 JSON 序列化 tags（`json:"xxx"`），字段名使用 snake_case 与前端 mockFetch 数据字段保持一致
+4. 不编写任何业务逻辑方法，纯粹的 struct 定义
+5. 每个 struct 独立一个文件，放在 `model/` 目录下
+
+**输出示例**：
 
 ```go
-package service
+// model/host_asset.go
+package model
 
-// imports
+import "time"
 
-// 1. 服务结构体（包含依赖）
-type AssetService struct {
-    repo   *AssetRepository
-    cache  *HostAssetCache
-    logger *slog.Logger
+// HostAsset 主机资产实体。
+type HostAsset struct {
+    ID           int64      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    HostID       string     `gorm:"column:host_id;type:varchar(64);uniqueIndex;not null" json:"host_id"`
+    HostName     string     `gorm:"column:host_name;type:varchar(255);not null" json:"host_name"`
+    IPAddress    string     `gorm:"column:ip_address;type:varchar(45);not null;index" json:"ip_address"`
+    OSName       string     `gorm:"column:os_name;type:varchar(128)" json:"os_name"`
+    OSVersion    string     `gorm:"column:os_version;type:varchar(64)" json:"os_version"`
+    CVEID        string     `gorm:"column:cve_id;type:varchar(20);index" json:"cve_id"`
+    CVSSScore    float64    `gorm:"column:cvss_score;type:decimal(3,1);index" json:"cvss_score"`
+    VulnName     string     `gorm:"column:vuln_name;type:varchar(512)" json:"vuln_name"`
+    Status       string     `gorm:"column:status;type:enum('open','in_progress','fixed','ignored');default:open;index" json:"status"`
+    DiscoveredAt *time.Time `gorm:"column:discovered_at" json:"discovered_at"`
+    CreatedAt    time.Time  `gorm:"column:created_at;autoCreateTime" json:"created_at"`
+    UpdatedAt    time.Time  `gorm:"column:updated_at;autoUpdateTime" json:"updated_at"`
 }
 
-// 2. 构造函数
-func NewAssetService(repo *AssetRepository) *AssetService { ... }
+func (HostAsset) TableName() string {
+    return "host_assets"
+}
+```
 
-// 3. 业务方法 — 对应 openapi.yaml 中的每个接口
-func (s *AssetService) QueryHosts(ctx context.Context, filter HostFilter, page, pageSize int) ([]HostAsset, int64, error) { ... }
-func (s *AssetService) GetHostByID(ctx context.Context, hostID string) (*HostAsset, error) { ... }
-func (s *AssetService) DiscoverSubnet(ctx context.Context, cidr string, opts ScanOptions) (*ScanResult, error) { ... }
+**去 AI 化要求（从 deai_rules.md）：**
+- struct 上方只有一条 Docstring 注释
+- 字段名用驼峰，JSON tag 用蛇形（与前端 mockFetch 的 snake_case 一致）
+- 不写 "`// 主机名称`" 等解释性注释
 
-// 4. Controller 层（Gin handler）— 可选，可单独放 controller/ 目录
-func (h *AssetHandler) ListHosts(c *gin.Context) {
-    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-    pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-    hosts, total, err := h.service.QueryHosts(c.Request.Context(), filter, page, pageSize)
-    if err != nil {
-        slog.Error("query_hosts_failed", "page", page, "error", err)
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query hosts"})
-        return
+**生成清单**（根据 database_schema.sql 中实际存在的表）：
+
+| 表名 | 文件 |
+|------|------|
+| `host_assets` | `model/host_asset.go` |
+| `web_assets` | `model/web_asset.go` |
+| `vulnerabilities` | `model/vulnerability.go` |
+| `scan_tasks` | `model/scan_task.go` |
+| `scan_schedules` | `model/scan_schedule.go` |
+| `config_audit_results` | `model/config_audit_result.go` |
+| `web_vulnerabilities` | `model/web_vulnerability.go` |
+| `web_monitor_status` | `model/web_monitor_status.go` |
+| `pentest_tasks` | `model/pentest_task.go` |
+| `alerts` | `model/alert.go` |
+| `whitelist_entries` | `model/whitelist_entry.go` |
+| `block_policies` | `model/block_policy.go` |
+| `agents` | `model/agent.go` |
+| `honeypots` | `model/honeypot.go` |
+| `honeypot_events` | `model/honeypot_event.go` |
+| `system_config` | `model/system_config.go` |
+| `operation_logs` | `model/operation_log.go` |
+| `linkage_policies` | `model/linkage_policy.go` |
+
+---
+
+### 切片 2：Repository 层
+
+**触发指令**：`GENERATE_REPOSITORIES`
+
+**任务**：注入 Model，生成所有数据访问层代码。
+
+**要求**：
+
+1. 严格遵循 `func (r *XxxRepository) MethodName(ctx context.Context, ...) ([]XxxModel, int64, error)` 签名
+2. 所有查询必须处理 `gorm.ErrRecordNotFound`，禁止忽略此错误
+3. 必须覆盖的工业级场景：
+   - 分页查询（`Offset` + `Limit` + `Count`）
+   - 条件筛选（动态 `Where` 拼接）
+   - 批量插入（带事务 `db.Transaction`）
+   - 统计聚合（`Count`、`Group By`）
+4. 每个 Repository 独立一个文件，放在 `repository/` 目录下
+5. 引用 `model/` 中的 struct
+
+**输出示例**：
+
+```go
+// repository/host_asset_repo.go
+package repository
+
+import (
+    "context"
+    "fmt"
+
+    "gorm.io/gorm"
+    "{module}/model"
+)
+
+// HostAssetRepository 主机资产数据访问层。
+type HostAssetRepository struct {
+    db *gorm.DB
+}
+
+func NewHostAssetRepository(db *gorm.DB) *HostAssetRepository {
+    return &HostAssetRepository{db: db}
+}
+
+// QueryByFilter 分页查询主机资产列表。
+func (r *HostAssetRepository) QueryByFilter(ctx context.Context, filter map[string]interface{}, offset, limit int) ([]model.HostAsset, int64, error) {
+    var total int64
+    var assets []model.HostAsset
+
+    q := r.db.WithContext(ctx).Model(&model.HostAsset{})
+    if status, ok := filter["status"]; ok {
+        q = q.Where("status = ?", status)
     }
-    c.JSON(http.StatusOK, gin.H{
-        "total": total,
-        "page":  page,
-        "items": hosts,
+    if riskLevel, ok := filter["risk_level"]; ok {
+        q = q.Where("cvss_score >= ?", riskLevel)
+    }
+    if keyword, ok := filter["keyword"]; ok {
+        q = q.Where("host_name LIKE ? OR ip_address LIKE ?", "%"+keyword.(string)+"%", "%"+keyword.(string)+"%")
+    }
+
+    if err := q.Count(&total).Error; err != nil {
+        return nil, 0, fmt.Errorf("count host assets: %w", err)
+    }
+
+    if err := q.Order("cvss_score DESC").Offset(offset).Limit(limit).Find(&assets).Error; err != nil {
+        return nil, 0, fmt.Errorf("query host assets: %w", err)
+    }
+
+    return assets, total, nil
+}
+
+// GetByHostID 根据主机ID获取详情。
+func (r *HostAssetRepository) GetByHostID(ctx context.Context, hostID string) (*model.HostAsset, error) {
+    var asset model.HostAsset
+    err := r.db.WithContext(ctx).Where("host_id = ?", hostID).First(&asset).Error
+    if err != nil {
+        if err == gorm.ErrRecordNotFound {
+            return nil, fmt.Errorf("host asset %s: %w", hostID, ErrAssetNotFound)
+        }
+        return nil, fmt.Errorf("query host %s: %w", hostID, err)
+    }
+    return &asset, nil
+}
+
+// BatchInsert 批量插入主机资产（带事务）。
+func (r *HostAssetRepository) BatchInsert(ctx context.Context, assets []model.HostAsset) error {
+    return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        return tx.CreateInBatches(assets, 100).Error
     })
 }
+```
 
-// 5. Repository 层（数据访问）
-type AssetRepository struct { db *gorm.DB }
-func (r *AssetRepository) QueryHosts(ctx context.Context, filter HostFilter, offset, limit int) ([]HostAsset, int64, error) { ... }
+**必须定义的错误类型**（放在 `repository/errors.go`）：
+
+```go
+package repository
+
+import "errors"
+
+var (
+    ErrAssetNotFound      = errors.New("asset not found")
+    ErrVulnerabilityNotFound = errors.New("vulnerability not found")
+    ErrScanTaskNotFound   = errors.New("scan task not found")
+    ErrDuplicateEntry     = errors.New("duplicate entry")
+)
 ```
 
 ---
 
-## 各服务核心业务逻辑
+### 切片 3：Service & Controller 层
 
-### BE-Agent-1：DashboardAggService（首页聚合）
+**触发指令**：`GENERATE_SERVICES`
 
-- `/dashboard/summary` — 多表聚合查询（hosts 总数 + 高风险计数 + 24h 告警计数 + 覆盖率）
-- `/dashboard/top-risky-hosts` — 按 risk_level + vuln_count 排序取 TOP N
-- `/dashboard/attack-trend` — 按日期分组统计告警趋势
-- `/dashboard/risk-distribution` — 按 risk_level 分组统计占比
-- `/alerts` — 分页查询告警列表
+**任务**：注入 Repository，生成包含复杂业务逻辑的 Service 层和暴露路由的 Controller/Handler 层。
 
-### BE-Agent-2：AssetService + ScanEngine（资产中心）
+**要求**：
 
-- `/assets/hosts` — 分页查询 + 筛选（状态、风险等级、关键字）
-- `/assets/hosts/{id}` — 单主机详情
-- `/assets/websites` — 分页查询
-- `/assets/websites/{id}` — 单网站详情
-- `/assets/attack-surface` — 端口暴露统计 + ESI 计算
-- `/assets/traffic-stats` — 流量统计
-- **扫描引擎核心**：CIDR 解析 + ICMP 存活探测 + 端口扫描（goroutine 并发 + context 超时控制）
+1. **Service 层**：
+   - 实现业务聚合逻辑（如查询主机列表后过滤高危端口状态）
+   - 涉及扫描、资产发现的 Service 必须使用 `errgroup` 或 `sync.WaitGroup` + `context.WithTimeout`
+   - 引入 `slog` 进行结构化日志打印
+   - 每个 Service 独立一个文件
 
-### BE-Agent-3：VulnService + ScanScheduler（主机风险）
+2. **Controller 层**：
+   - 从 `openapi.yaml` 提取路由路径，注册到 Gin Router
+   - 统一的响应格式封装
+   - 每个模块的 Controller 独立一个文件
 
-- `/host-risks/vulnerabilities` — 分页查询漏洞
-- `/host-risks/vulnerabilities/{id}` — 单漏洞详情
-- `/host-risks/scan-tasks` — 扫描任务 CRUD
-- `/host-risks/scan-schedules` — 周期调度 CRUD
-- `/host-risks/config-audits` — 配置核查结果查询
-- **漏扫引擎核心**：端口服务识别 → CVE 版本匹配 → 差异计算（本次 vs 上次扫描结果）
+**Service 层输出示例**：
 
-### BE-Agent-4：WebMonitorService + Crawler（网站风险）
+```go
+// service/asset_service.go
+package service
 
-- `/web-risks/websites` — 分页查询
-- `/web-risks/vulnerabilities` — 网站漏洞查询
-- `/web-risks/monitor-status` — 监测状态查询
-- `/web-risks/pentest-tasks` — 渗透测试任务 CRUD
-- **监测引擎核心**：HTTP 探活 + 状态码判断 + 响应时间统计 + 暗链正则检测
+import (
+    "context"
+    "fmt"
+    "log/slog"
+    "sync"
+    "time"
 
-### BE-Agent-5：AlertService + HoneyPot + SysConfig（攻击事件+系统）
+    "{module}/model"
+    "{module}/repository"
+)
 
-- `/attacks/events` — 告警事件分页查询（支持按类型、级别、时间筛选）
-- `/attacks/whitelist` — 白名单 CRUD
-- `/attacks/block-policies` — 阻断策略 CRUD
-- `/attacks/agents` — Agent 列表 + 心跳状态
-- `/attacks/honeypots` — 蜜罐 CRUD + 诱捕事件查询
-- `/system/config` — 系统配置读写
-- `/system/op-logs` — 操作日志查询
-- `/system/linkage-policies` — 联动策略 CRUD
+// AssetService 资产中心业务服务。
+type AssetService struct {
+    hostRepo *repository.HostAssetRepository
+    webRepo  *repository.WebAssetRepository
+}
+
+func NewAssetService(hostRepo *repository.HostAssetRepository, webRepo *repository.WebAssetRepository) *AssetService {
+    return &AssetService{hostRepo: hostRepo, webRepo: webRepo}
+}
+
+// QueryHosts 分页查询主机资产。
+func (s *AssetService) QueryHosts(ctx context.Context, filter map[string]interface{}, page, pageSize int) ([]model.HostAsset, int64, error) {
+    offset := (page - 1) * pageSize
+    hosts, total, err := s.hostRepo.QueryByFilter(ctx, filter, offset, pageSize)
+    if err != nil {
+        slog.Error("query_hosts_failed", "page", page, "error", err)
+        return nil, 0, fmt.Errorf("query hosts: %w", err)
+    }
+    slog.Info("hosts_queried", "total", total, "page", page)
+    return hosts, total, nil
+}
+
+// ProbeHostReachability 并发探测指定 CIDR 范围内主机的可达性。
+func (s *AssetService) ProbeHostReachability(ctx context.Context, ipList []string, timeout time.Duration) []model.HostProbeResult {
+    ctx, cancel := context.WithTimeout(ctx, timeout)
+    defer cancel()
+
+    var mu sync.Mutex
+    var results []model.HostProbeResult
+    var wg sync.WaitGroup
+
+    for _, ip := range ipList {
+        wg.Add(1)
+        go func(targetIP string) {
+            defer wg.Done()
+            defer func() {
+                if r := recover(); r != nil {
+                    slog.Error("probe_goroutine_panic", "ip", targetIP, "panic", r)
+                }
+            }()
+
+            reachable := probeTCPConnect(ctx, targetIP, 3*time.Second)
+            mu.Lock()
+            results = append(results, model.HostProbeResult{
+                IP:        targetIP,
+                Reachable: reachable,
+                Timestamp: time.Now(),
+            })
+            mu.Unlock()
+        }(ip)
+    }
+    wg.Wait()
+    return results
+}
+```
+
+**Controller 层输出示例**：
+
+```go
+// controller/asset_controller.go
+package controller
+
+import (
+    "net/http"
+    "strconv"
+
+    "github.com/gin-gonic/gin"
+    "{module}/service"
+)
+
+// AssetController 资产中心控制器。
+type AssetController struct {
+    svc *service.AssetService
+}
+
+func NewAssetController(svc *service.AssetService) *AssetController {
+    return &AssetController{svc: svc}
+}
+
+// RegisterRoutes 注册资产相关路由。
+func (c *AssetController) RegisterRoutes(r *gin.RouterGroup) {
+    r.GET("/hosts", c.ListHosts)
+    r.GET("/hosts/:hostId", c.GetHost)
+    r.GET("/websites", c.ListWebsites)
+    r.GET("/attack-surface", c.GetAttackSurface)
+    r.GET("/traffic-stats", c.GetTrafficStats)
+}
+
+// ListHosts 分页查询主机列表。
+func (c *AssetController) ListHosts(ctx *gin.Context) {
+    page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+    pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "10"))
+
+    filter := map[string]interface{}{}
+    if status := ctx.Query("status"); status != "" {
+        filter["status"] = status
+    }
+    if keyword := ctx.Query("keyword"); keyword != "" {
+        filter["keyword"] = keyword
+    }
+
+    hosts, total, err := c.svc.QueryHosts(ctx.Request.Context(), filter, page, pageSize)
+    if err != nil {
+        ctx.JSON(http.StatusInternalServerError, gin.H{"code": 50001, "message": "查询主机资产失败"})
+        return
+    }
+
+    ctx.JSON(http.StatusOK, gin.H{
+        "code": 0,
+        "data": gin.H{
+            "total":     total,
+            "page":      page,
+            "page_size": pageSize,
+            "items":     hosts,
+        },
+    })
+}
+
+// GetHost 获取主机详情。
+func (c *AssetController) GetHost(ctx *gin.Context) {
+    hostID := ctx.Param("hostId")
+    host, err := c.svc.GetHostByID(ctx.Request.Context(), hostID)
+    if err != nil {
+        ctx.JSON(http.StatusNotFound, gin.H{"code": 40004, "message": "主机不存在"})
+        return
+    }
+    ctx.JSON(http.StatusOK, gin.H{"code": 0, "data": host})
+}
+```
+
+**统一的响应格式**：
+
+```go
+// controller/response.go
+package controller
+
+// PagedResponse 分页响应体。
+type PagedResponse struct {
+    Code     int         `json:"code"`
+    Data     PagedData   `json:"data"`
+}
+
+type PagedData struct {
+    Total    int64       `json:"total"`
+    Page     int         `json:"page"`
+    PageSize int         `json:"page_size"`
+    Items    interface{} `json:"items"`
+}
+
+// SuccessResponse 通用成功响应体（对应前端 mockFetch 的 code: 200）。
+func SuccessResponse(data interface{}) gin.H {
+    return gin.H{"code": 0, "data": data}
+}
+```
 
 ---
 
-## 代码行数要求
+## 输出规范
 
-每个 Agent 产出 2000+ 行（含 Controller + Service + Repository），总计 10000+ 行。
+针对你收到的触发指令，**仅输出当前切片对应的 `.go` 源码文件**，不要输出其他切片的代码。
 
-**这不是虚行**：每行都必须是真实的业务逻辑代码，不是空行、注释、重复模板。
+- `GENERATE_MODELS` → 输出 `model/*.go`
+- `GENERATE_REPOSITORIES` → 输出 `repository/*.go`（含 `errors.go`）
+- `GENERATE_SERVICES` → 输出 `service/*.go` + `controller/*.go` + `main.go`
 
----
+**代码行数目标**：三个切片合计 >= 10000 行，每行必须是有效业务代码。
 
-## 注意事项
-
-1. 所有数据库操作必须使用参数化查询（GORM 自动处理，禁止拼接 SQL）
-2. 所有外部 API 调用（如 HTTP 探活）必须有超时控制（context.WithTimeout）
-3. 所有 goroutine 必须有 recover 保护
-4. 错误信息不泄露内部实现细节
-5. 每个接口返回统一的分页格式：`{ "total": N, "page": M, "page_size": S, "items": [...] }`
+**去 AI 化全程执行**：参考 `references/deai_rules.md`，每个文件生成时即符合规范。

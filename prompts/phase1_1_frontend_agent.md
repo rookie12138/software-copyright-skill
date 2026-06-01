@@ -1,129 +1,258 @@
-# Phase 1.1 Prompt: Frontend View Component Agent
+# Phase 1.1 Prompt: Frontend View Component Agent (修订版)
 
-你是前端组件开发工程师。你收到的任务是为**一个指定模块**生成纯页面级视图组件。
+你是前端组件开发工程师。你的任务是为**一个指定模块**生成纯页面级视图组件。
 
 ## 铁律（违反任何一条即打回重做）
 
-1. **禁止输出 `<html>`、`<head>`、`<body>`、`<script src="...">` 标签**。你只输出一个 JS 文件。
+1. **禁止输出 `<html>`、`<head>`、`<body>`、`<script src="...">` 标签**。只输出一个 JS 文件。
 2. **禁止自行编写侧边栏或顶栏**。这些已在 App Shell 中。
-3. **禁止输出空白骨架页**。所有数据必须填充工业级 Mock 数据。
+3. **强制数据解耦（核心契约）**：严禁直接在 HTML 字符串中写死业务数据。**必须**在文件顶部定义 `async function mockFetch(url, options)`，所有渲染函数通过它获取数据。
 4. **禁止写解释性注释**。如 `// 定义变量`、`// 渲染表格`、`// 绑定事件`。
-5. **只暴露一个函数签名**：`function renderXxx(container, params)`，挂载到 `window`。
+5. **只暴露一个异步函数签名**：`window.renderXxx = async function(container, params)`。
 
 ## 输入
 
 - `spec.json` → 了解本模块的 `id`、`name`、`route`、`sub_modules`
 - `css/variables.css` → 已有的 CSS 变量名（引用时使用 `var(--xxx)`）
-- `css/layout.css` → 已有的全局类名（`.stat-card`、`.data-table`、`.chart-container`、`.sub-tabs`、`.btn` 等）
+- `css/layout.css` → 已有的全局类名（`.glass-card`、`.data-table`、`.chart-container`、`.sub-tabs`、`.btn` 等）
 - `js/router.js` → `window.router` API（`navigate()`, `getCurrentParams()`）
 
-## 输出格式
+---
 
-一个独立的 JS 文件，例如 `js/views/dashboard.js`：
+## 数据获取契约规范 (mockFetch Pattern)
+
+**这是本阶段最重要的部分。你必须在文件头部按以下格式实现所有当前页面需要的数据接口：**
 
 ```javascript
 /**
- * {模块名称} View Component.
- * 渲染 {模块名称} 的完整页面内容。
+ * 统一数据获取适配器。
+ * URL 路径和返回 JSON 结构将被 Phase 1.2 严格提取，
+ * 请保证路径语义化、字段结构完整且专业。
  */
-window.render{模块ID大写首字母} = function(container, params) {
-    // 使用 container.innerHTML 或 DOM API 构建页面
-    // 所有数据必须硬编码工业级 Mock 数据
-    // 涉及跨模块跳转时使用 router.navigate()
-};
-```
+async function mockFetch(url, options) {
+    // 模拟网络延迟（让渲染逻辑能正确处理异步流程）
+    await new Promise(function(resolve) { setTimeout(resolve, 100); });
 
-## 函数内必须做的事情
+    // ==== 示例：首页态势总览聚合接口 ====
+    if (url.includes('/api/v1/dashboard/summary')) {
+        return {
+            code: 200,
+            data: {
+                total_assets: 12847,
+                critical_risks: 326,
+                alerts_24h: 1892,
+                protection_coverage: 94.7
+            }
+        };
+    }
 
-### 1. 子 Tab 导航（如果模块有 sub_modules）
+    // ==== 示例：高危主机列表（带分页） ====
+    if (url.includes('/api/v1/assets/hosts/high-risk')) {
+        return {
+            code: 200,
+            data: {
+                total: 24,
+                page: 1,
+                page_size: 10,
+                items: [
+                    {
+                        host_id: 'H-9921',
+                        host_name: 'DMZ-VM-Prod-17',
+                        ip_address: '172.20.18.175',
+                        os_name: 'VMware ESXi',
+                        os_version: '7.0 Update 3',
+                        cve_id: 'CVE-2024-37085',
+                        cvss_score: 9.8,
+                        vuln_name: 'ESXi Authentication Bypass',
+                        discovered_at: '2026-05-28T14:22:00Z',
+                        status: 'open'
+                    }
+                    // ... 每个接口至少提供 10 条真实感数据
+                ]
+            }
+        };
+    }
 
-使用 `.sub-tabs` + `.sub-tab` 类名：
-
-```javascript
-var tabsHtml = '<div class="sub-tabs">';
-module.sub_modules.forEach(function(sub, i) {
-    tabsHtml += '<div class="sub-tab' + (i === 0 ? ' active' : '') + '" data-tab="' + sub.id + '">' + sub.name + '</div>';
-});
-tabsHtml += '</div>';
-```
-
-Tab 切换逻辑：点击 Tab 时切换 `.active` 类，切换下方对应的内容区域。
-
-### 2. 统计卡片（KPI 指标）
-
-使用 `.stat-card` 类名：
-
-```javascript
-var cardsHtml = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">';
-cardsHtml += '<div class="stat-card">';
-cardsHtml += '<div class="stat-card__value">12,847</div>';
-cardsHtml += '<div class="stat-card__label">受控主机资产数</div>';
-cardsHtml += '<div class="stat-card__trend up">↑ 12%</div>';
-cardsHtml += '</div>';
-// ... 更多卡片
-```
-
-### 3. 数据表格
-
-使用 `.data-table` 类名：
-
-```javascript
-var tableHtml = '<table class="data-table"><thead><tr>';
-tableHtml += '<th>主机名称</th><th>IP 地址</th><th>操作系统</th><th>开放端口</th><th>风险等级</th><th>操作</th>';
-tableHtml += '</tr></thead><tbody>';
-// 循环渲染数据行
-tableHtml += '</tbody></table>';
-```
-
-### 4. ECharts 图表
-
-使用 `.chart-container` 类名，图表初始化在 `container.innerHTML` 赋值后执行：
-
-```javascript
-// 先用 innerHTML 构建 DOM
-container.innerHTML = html;
-
-// 然后初始化 ECharts（此时 DOM 已存在）
-var chartDom = container.querySelector('#attack-trend-chart');
-if (chartDom) {
-    var chart = echarts.init(chartDom);
-    chart.setOption({
-        // ... 完整的图表配置，包含 30 天/24 小时/7 天的真实时序数据
-    });
+    // 默认兜底
+    throw new Error('Unregistered API route: ' + url);
 }
 ```
 
+**mockFetch 设计原则：**
+- 每个 `if (url.includes(...))` 分支对应后端一个真实接口
+- 返回体包含 `code` + `data`，列表接口带 `total` + `items`
+- 字段命名统一使用 snake_case（与后端数据库列名一致）
+- 时间使用 ISO 8601 格式
+- IP 使用真实内网段，端口使用真实服务端口
+- CVE 编号使用真实 CVE + 真实年份
+
+---
+
+## 组件渲染规范
+
+**在你的主函数中，必须先获取数据，再构建 DOM：**
+
+```javascript
+window.renderDashboard = async function(container, params) {
+    try {
+        // 1. 并发获取页面所需数据
+        var summaryRes = await mockFetch('/api/v1/dashboard/summary');
+        var hostsRes = await mockFetch('/api/v1/assets/hosts/high-risk?limit=5');
+        var trendRes = await mockFetch('/api/v1/dashboard/attack-trend?days=7');
+        var distRes = await mockFetch('/api/v1/dashboard/risk-distribution');
+        var alertsRes = await mockFetch('/api/v1/alerts?limit=8');
+        
+        var summary = summaryRes.data;
+        var hosts = hostsRes.data.items;
+        var trendData = trendRes.data.points;
+        var distribution = distRes.data;
+        var alerts = alertsRes.data.items;
+        
+        // 2. 构建 HTML 字符串（使用提取到的数据，不在字符串中写死）
+        var html = '';
+        html += '<div class="dashboard-container">';
+        
+        // KPI 卡片区
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:24px;">';
+        html += '  <div class="glass-card card-layer-1">';
+        html += '    <div class="stat-card__value">' + summary.total_assets.toLocaleString() + '</div>';
+        html += '    <div class="stat-card__label">受控主机资产数</div>';
+        html += '  </div>';
+        html += '  <div class="glass-card card-layer-1">';
+        html += '    <div class="stat-card__value">' + summary.critical_risks.toLocaleString() + '</div>';
+        html += '    <div class="stat-card__label">高危风险资产数</div>';
+        html += '  </div>';
+        // ... 更多卡片
+        html += '</div>';
+        
+        // 图表区
+        html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:24px;">';
+        html += '  <div class="chart-container card-layer-2" id="chart-attack-trend"></div>';
+        html += '  <div class="chart-container card-layer-2" id="chart-risk-dist"></div>';
+        html += '</div>';
+        
+        // 高危主机表格
+        html += '<div class="card-layer-3" style="border-radius:var(--radius-card);overflow:hidden;">';
+        html += '<div class="section-title" style="padding:16px;">高危风险资产 TOP 5</div>';
+        html += '<table class="data-table data-table--striped data-table--sticky"><thead><tr>';
+        html += '<th>主机名称</th><th>IP 地址</th><th>操作系统</th><th>CVE 编号</th><th>CVSS 评分</th><th>操作</th>';
+        html += '</tr></thead><tbody>';
+        for (var i = 0; i < hosts.length; i++) {
+            var h = hosts[i];
+            html += '<tr>';
+            html += '<td>' + h.host_name + '</td>';
+            html += '<td>' + h.ip_address + '</td>';
+            html += '<td>' + h.os_name + ' ' + h.os_version + '</td>';
+            html += '<td>' + h.cve_id + '</td>';
+            html += '<td class="col-threat ' + (h.cvss_score >= 9 ? 'critical' : 'high') + '">' + h.cvss_score + '</td>';
+            html += '<td><button class="btn btn-outline btn-detail" data-host-id="' + h.host_id + '">风险详情</button></td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+        
+        // 实时告警列表
+        html += '<div class="card-layer-3" style="margin-top:20px;border-radius:var(--radius-card);overflow:hidden;">';
+        html += '<div class="section-title" style="padding:16px;">实时威胁告警</div>';
+        html += '<table class="data-table data-table--striped data-table--sticky"><thead><tr>';
+        html += '<th>时间</th><th>源 IP</th><th>目标 IP</th><th>攻击类型</th><th>威胁等级</th><th>处置状态</th><th>操作</th>';
+        html += '</tr></thead><tbody>';
+        for (var j = 0; j < alerts.length; j++) {
+            var a = alerts[j];
+            html += '<tr>';
+            html += '<td>' + a.timestamp + '</td>';
+            html += '<td>' + a.src_ip + '</td>';
+            html += '<td>' + a.dst_ip + '</td>';
+            html += '<td>' + a.attack_type + '</td>';
+            html += '<td><span class="badge badge-' + a.level + '">' + a.level + '</span></td>';
+            html += '<td>' + a.status + '</td>';
+            html += '<td><button class="btn btn-outline btn-dispose" data-alert-id="' + a.alert_id + '">处置</button></td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+        
+        html += '</div>'; // end dashboard-container
+        
+        container.innerHTML = html;
+        
+        // 3. 路由联动绑定（使用原生 DOM API 绑定事件）
+        var detailBtns = container.querySelectorAll('.btn-detail');
+        detailBtns.forEach(function(btn, index) {
+            btn.onclick = function() {
+                var hostId = btn.getAttribute('data-host-id');
+                router.navigate('/host-risk', { hostId: hostId });
+            };
+        });
+        
+        var disposeBtns = container.querySelectorAll('.btn-dispose');
+        disposeBtns.forEach(function(btn, index) {
+            btn.onclick = function() {
+                var alertId = btn.getAttribute('data-alert-id');
+                router.navigate('/attack', { alertId: alertId });
+            };
+        });
+        
+        // 4. 初始化 ECharts（在 innerHTML 写入后）
+        var trendDom = container.querySelector('#chart-attack-trend');
+        if (trendDom) {
+            var trendChart = echarts.init(trendDom, 'dark-cyber');
+            trendChart.setOption({
+                // 使用 trendData 构建图表配置
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['入站攻击', '出站流量'], textStyle: { color: 'var(--color-text-secondary)' } },
+                grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                xAxis: {
+                    type: 'category',
+                    data: trendData.map(function(p) { return p.date; }),
+                    axisLabel: { color: 'var(--color-text-secondary)' }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: { color: 'var(--color-text-secondary)' }
+                },
+                series: [
+                    {
+                        name: '入站攻击',
+                        type: 'line',
+                        data: trendData.map(function(p) { return p.inbound; }),
+                        smooth: true,
+                        lineStyle: { color: 'var(--color-danger)' },
+                        itemStyle: { color: 'var(--color-danger)' }
+                    },
+                    {
+                        name: '出站流量',
+                        type: 'line',
+                        data: trendData.map(function(p) { return p.outbound; }),
+                        smooth: true,
+                        lineStyle: { color: 'var(--color-accent)' },
+                        itemStyle: { color: 'var(--color-accent)' }
+                    }
+                ]
+            });
+        }
+        
+    } catch (error) {
+        container.innerHTML = '<div class="glass-card" style="text-align:center;padding:48px;"><span class="badge badge-critical">数据加载失败: ' + error.message + '</span></div>';
+    }
+};
+```
+
+---
+
 ## 路由跳转联动规则
 
-在页面中编写跳转逻辑时，遵循以下契约（增强截图连贯性）：
+（保留原有规则，改为从 mockFetch 数据中提取 ID 参数传递）
 
 | 来源页面 | 触发点 | 目标路由 | 传递参数 |
 |---------|--------|---------|---------|
-| 首页 | "高危资产 TOP 5" 的"详情"按钮 | `/asset` | `{ hostId: 'xxx' }` |
-| 首页 | 实时告警列表的"处置"按钮 | `/attack` | `{ alertId: 'xxx' }` |
-| 首页 | KPI 卡片的"查看详情"链接 | 对应模块路由 | 无参数 |
-| 资产中心 | 主机列表的"风险详情" | `/host-risk` | `{ hostId: 'xxx' }` |
-| 资产中心 | 网站列表的"漏洞详情" | `/web-risk` | `{ siteId: 'xxx' }` |
-| 主机风险 | 漏洞列表的"关联资产" | `/asset` | `{ hostId: 'xxx' }` |
-| 网站风险 | 渗透测试报告的"攻击路径" | `/attack` | `{ pentestId: 'xxx' }` |
+| 首页 | "高危资产 TOP 5" 的"详情"按钮 | `/host-risk` | `{ hostId: host.host_id }` |
+| 首页 | 实时告警列表的"处置"按钮 | `/attack` | `{ alertId: alert.alert_id }` |
+| 首页 | KPI 卡片的"查看详情" | 对应模块路由 | 无参数 |
+| 资产中心 | 主机列表的"风险详情" | `/host-risk` | `{ hostId: host.host_id }` |
+| 资产中心 | 网站列表的"漏洞详情" | `/web-risk` | `{ siteId: site.site_id }` |
+| 主机风险 | 漏洞列表的"关联资产" | `/asset` | `{ hostId: vuln.host_id }` |
+| 网站风险 | 渗透测试的"攻击路径" | `/attack` | `{ pentestId: task.task_id }` |
 
-实现方式：
-
-```javascript
-// 绑定点击事件时
-detailBtn.onclick = function() {
-    router.navigate('/asset', { hostId: 'SRV-BJ-00128' });
-};
-```
-
-**接收方页面必须读取 params：**
-
-```javascript
-window.renderAssetCenter = function(container, params) {
-    var focusHostId = params.hostId;  // 如果是通过跳转过来的，高亮该主机
-    // ... 渲染逻辑
-};
-```
+---
 
 ## Mock 数据规范
 
@@ -133,188 +262,124 @@ window.renderAssetCenter = function(container, params) {
 |---------|------|---------|---------|
 | CVE 编号 | 真实 CVE 编号 + 年份 | CVE-0000-0000 | CVE-2024-6387 (RegreSSHion) |
 | CVSS 评分 | 1.0-10.0 之间的合理值 | 0.0 或全部 10.0 | 9.8, 7.5, 5.3, 3.1 |
-| IP 地址 | 真实内网 IP 段 | 1.1.1.1 | 192.168.1.128, 10.0.5.42 |
+| IP 地址 | 真实内网 IP 段 | 1.1.1.1 | 192.168.1.128, 10.0.5.42, 172.20.18.175 |
 | 端口 | 常见服务端口 | 99999 | 22, 3389, 445, 6379, 3306, 8080, 443 |
-| 操作系统 | 真实 OS 版本 | OS V1.0 | Ubuntu 22.04 LTS, Windows Server 2019, CentOS 7.9 |
-| MAC 地址 | 真实 OUI 前缀 | 00:00:00:00:00:00 | 08:00:27:5A:3F:12 (VirtualBox), 00:50:56:8B:2C:45 (VMware) |
-| 攻击类型 | 真实攻击向量 | hack_attack | SQL Injection, XSS (Stored), SSRF, RCE via Deserialization |
-| 时间 | 过去 30 天内的日期 | 2020-01-01 | 2026-05-01 ~ 2026-06-01 |
-| 组织名称 | 真实部门名称 | Dept A | 安全运营中心, 网络运维部, 金融业务线-风控组 |
+| 操作系统 | 真实 OS 版本 | OS V1.0 | Ubuntu 22.04 LTS, Windows Server 2019, VMware ESXi 7.0 |
+| 攻击类型 | 真实攻击向量 | hack_attack | SQL Injection, Stored XSS, SSRF, RCE via Deserialization |
+| 时间 | ISO 8601 格式 | 2020-01-01 | 2026-05-28T14:22:00Z |
+| 威胁等级 | 固定枚举值 | danger | critical, high, medium, low |
 
 ### 数据量要求
 
 | 场景 | 最少条目 |
 |------|---------|
-| 统计卡片 | 4 张 |
-| 数据表格 | 10 行 |
-| ECharts 时序图 | 30 个数据点 |
+| 每个 mockFetch 列表接口 | 10 条 items |
+| ECharts 时序图 | 30 个 data points |
 | ECharts 饼图/柱状图 | 4-6 个分类 |
 | 告警列表 | 8 条 |
-| 子 Tab 内容 | 每个 Tab 至少一个表格或图表 |
 
 ### 数据零值禁止
 
 - 统计数字不能全为 0
 - 图表不能全为空
-- 表格至少 5 行有数据
-- 告警列表不能为空
+- 每个 mockFetch 分支至少返回 1 条有意义数据
+- CVSS 评分不能全为 0
 
 ---
 
-## 模块专属内容指南
+## 模块专属 mockFetch 接口清单
 
-以下是各模块作为参考的参考内容，实际生成时应根据真实安全场景填充更多细节：
+以下是各模块必须实现的 mockFetch 接口参考：
 
 ### 首页 (dashboard)
 
 ```javascript
-window.renderDashboard = function(container, params) {
-    // KPI 卡片（4张）
-    // - 受控主机资产数: 12,847
-    // - 高危风险资产数: 326
-    // - 24h 威胁告警数: 1,892
-    // - 安全防护覆盖率: 94.7%
-
-    // 图表区（2个）
-    // - 7天内攻击趋势图（折线图，按天统计，含入站/出站两条线）
-    // - 风险等级分布（环形图：危急 8%、高危 22%、中危 45%、低危 25%）
-
-    // 实时告警列表（8条）
-    // - 包含：时间、源IP、目标IP、攻击类型、威胁等级、处置状态
-    // - 处置状态按钮跳转到 /attack
-};
+async function mockFetch(url, options) {
+    // /api/v1/dashboard/summary — 态势总览
+    // /api/v1/dashboard/attack-trend?days=7 — 攻击趋势时序数据
+    // /api/v1/dashboard/risk-distribution — 风险等级分布
+    // /api/v1/alerts?limit=8 — 实时告警列表
+    // /api/v1/assets/hosts/high-risk?limit=5 — 高危资产 TOP 5
+}
 ```
 
 ### 资产中心 (asset)
 
 ```javascript
-window.renderAssetCenter = function(container, params) {
-    // 4个子 Tab: 主机资产 | 网站资产 | 流量风险 | 攻击面
-
-    // 主机资产 Tab:
-    // - 统计卡片: 总资产数、在线数、离线数、未纳管数
-    // - 表格: 主机名、IP、OS、CPU、内存、Agent状态、风险等级、操作
-    // - "风险详情"按钮跳转到 /host-risk
-    
-    // 网站资产 Tab:
-    // - 表格: 域名、IP、Web Server、框架、SSL到期、状态
-    // - "漏洞详情"跳转到 /web-risk
-
-    // 流量风险 Tab:
-    // - 流量趋势图（面积图）
-    // - 异常流量 Top 10 表格
-
-    // 攻击面 Tab:
-    // - 端口暴露统计（柱状图）
-    // - 暴露风险指数 ESI 排行表
-};
+async function mockFetch(url, options) {
+    // /api/v1/assets/hosts?page=1&page_size=10 — 主机列表
+    // /api/v1/assets/hosts/{id} — 主机详情
+    // /api/v1/assets/websites?page=1&page_size=10 — 网站列表
+    // /api/v1/assets/attack-surface — 攻击面数据
+    // /api/v1/assets/traffic-stats — 流量统计
+}
 ```
 
 ### 主机风险 (host-risk)
 
 ```javascript
-window.renderHostRisk = function(container, params) {
-    // 4个子 Tab: 风险台账 | 漏洞扫描 | 周期漏扫 | 配置核查
-
-    // 风险台账 Tab:
-    // - 统计卡片: 漏洞总数、已修复、待处理、超期未修
-    // - 表格: 主机名、CVE编号、CVSS、漏洞名称、发现时间、状态
-    // - "关联资产"按钮跳转到 /asset
-
-    // 漏洞扫描 Tab:
-    // - 扫描任务列表 + 新建扫描按钮（弹出配置表单）
-    // - 最近扫描结果汇总表
-
-    // 周期漏扫 Tab:
-    // - Cron 调度列表
-    // - 增量漏洞对比表（新增/已修复高亮）
-
-    // 配置核查 Tab:
-    // - 合规标准选择器（等保2.0 / CIS / 自定义）
-    // - 核查结果表：主机名、检查项、合规状态、详情
-};
+async function mockFetch(url, options) {
+    // /api/v1/host-risks/vulnerabilities?page=1&page_size=10 — 漏洞列表
+    // /api/v1/host-risks/scan-tasks — 扫描任务
+    // /api/v1/host-risks/scan-schedules — 周期调度
+    // /api/v1/host-risks/config-audits — 配置核查
+}
 ```
 
 ### 网站风险 (web-risk)
 
 ```javascript
-window.renderWebRisk = function(container, params) {
-    // 4个子 Tab: 网站台账 | 漏洞扫描 | 安全监测 | 渗透测试
-
-    // 网站台账 Tab:
-    // - 统计卡片 + 网站列表表格
-    // - 每行：域名、IP、服务器、框架、SSL状态、最近扫描时间
-
-    // 漏洞扫描 Tab:
-    // - 扫描配置 + OWASP Top 10 分类统计（雷达图）
-    // - 漏洞列表表（CVE、类型、URL、风险等级）
-
-    // 安全监测 Tab:
-    // - SLA 可用性统计（折线图）
-    // - 暗链检测结果表
-    // - 篡改监测告警列表
-
-    // 渗透测试 Tab:
-    // - 测试任务列表
-    // - 攻击路径可视化（可选）
-    // - 漏洞验证结果表
-};
+async function mockFetch(url, options) {
+    // /api/v1/web-risks/websites?page=1&page_size=10 — 网站列表
+    // /api/v1/web-risks/vulnerabilities — 网站漏洞
+    // /api/v1/web-risks/monitor-status — 监测状态
+    // /api/v1/web-risks/pentest-tasks — 渗透测试任务
+}
 ```
 
 ### 攻击事件 (attack)
 
 ```javascript
-window.renderAttackEvent = function(container, params) {
-    // 6个子 Tab: 监测中心 | 白名单 | 阻断策略 | Agent管理 | 威胁告警 | 蜜罐配置
-
-    // 监测中心 Tab:
-    // - 攻击态势图（24小时时间轴）
-    // - 攻击来源 TOP 10（柱状图 + IP地理分布）
-    // - 实时攻击事件流
-
-    // 威胁告警 Tab:
-    // - 8类威胁分类统计（横向柱状图）
-    // - 告警列表：时间、类型、源IP、目标、置信度、状态、操作
-
-    // 蜜罐配置 Tab:
-    // - 6类蜜罐状态卡片（SSH/MySQL/Redis/Web/Git/OA）
-    // - 蜜罐诱捕事件列表
-};
+async function mockFetch(url, options) {
+    // /api/v1/attacks/events?page=1&page_size=10 — 攻击事件列表
+    // /api/v1/attacks/alerts/stats — 8类威胁统计
+    // /api/v1/attacks/whitelist — 白名单
+    // /api/v1/attacks/block-policies — 阻断策略
+    // /api/v1/attacks/agents — Agent状态
+    // /api/v1/attacks/honeypots — 蜜罐配置
+}
 ```
 
 ### 系统管理 (system)
 
 ```javascript
-window.renderSystem = function(container, params) {
-    // 7个子 Tab: 系统配置 | 在线升级 | 诊断工具 | 探针部署 | 参数管理 | 操作日志 | 联动策略
-
-    // 每个 Tab 包含一个配置表单或数据表格
-    // 操作日志 Tab: 表格包含时间、操作人、模块、操作类型、详情、IP
-    // 联动策略 Tab: 策略列表 + 新建策略表单
-};
+async function mockFetch(url, options) {
+    // /api/v1/system/config — 系统配置
+    // /api/v1/system/op-logs?page=1&page_size=10 — 操作日志
+    // /api/v1/system/linkage-policies — 联动策略
+}
 ```
 
 ---
 
 ## 代码风格约束
 
-1. 全部使用 `var` 声明变量（兼容性），不使用 `let`/`const`
+1. 全部使用 `var` 声明变量，不使用 `let`/`const`
 2. 不使用箭头函数，全部 `function() {}`
 3. 不使用模板字面量（反引号），字符串拼接用 `+`
-4. 不使用 `fetch()`/`XMLHttpRequest` — 所有数据硬编码在组件内
-5. 每个 `renderXxx()` 函数内所有数据直接写在代码中
-6. 函数拆分：如果某个部分逻辑复杂（如 ECharts 配置），可拆分为内部 helper 函数
-7. 不使用 `eval()`、`innerHTML +=` 循环（性能考虑，先拼好字符串再一次性赋值）
+4. 每个 `renderXxx()` 为 `async function`，通过 `mockFetch()` 获取数据
+5. 路由跳转使用 `router.navigate(route, params)`
 
 ---
 
 ## 重要提示
 
 **你只负责业务逻辑和数据填充，不需要过度关注视觉细节。**
-你产出的组件会由 Step 1.1b 的 `ui-ux-pro-max` 视觉修饰器进行精装修（添加毛玻璃效果、状态标签美化、斑马纹表格、霓虹边框等）。请聚焦于：
-- 正确的 DOM 结构（使用 `.stat-card`、`.data-table`、`.chart-container` 等类名）
-- 完整的工业级 Mock 数据
+你产出的组件会由 Step 1.1b 的 `ui-ux-pro-max` 视觉修饰器进行精装修。请聚焦于：
+- 在文件头部定义规范的 `async function mockFetch(url, options)` 及其所有接口分支
+- 在 `renderXxx()` 中正确调用 `mockFetch` 并解构数据
+- 正确的 DOM 结构（使用 `.glass-card`、`.data-table`、`.chart-container` 等类名）
 - 正确的路由跳转逻辑
 - 无解释性注释的代码
 
-视觉层面的工作交给下一步。
+视觉层面的工作交给 Step 1.1b。
