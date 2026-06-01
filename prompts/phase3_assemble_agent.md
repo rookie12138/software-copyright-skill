@@ -88,7 +88,7 @@ document.save('output/source_code.docx')
 13. `backend/service/*.go`
 14. `backend/controller/*.go`
 15. `backend/main.go`
-16. `database/schema.sql`
+16. `database_schema.sql`
 
 ---
 

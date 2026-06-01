@@ -458,7 +458,8 @@ window.renderDashboard = async function(container, params) {
 /api/v1/attacks/whitelist                     for i 1→15 白名单 IP/CIDR
 /api/v1/attacks/block-policies                for i 1→10 阻断策略（IP黑名单/区域封禁/协议过滤）
 /api/v1/attacks/agents                        for i 1→25 Agent节点（online/offline/unmanaged）
-/api/v1/attacks/honeypots                     for i 1→6 蜜罐（SSH/MySQL/Redis/Web/Git/OA）+ 诱捕事件
+/api/v1/attacks/honeypots                     for i 1→6 蜜罐（SSH/MySQL/Redis/Web/Git/OA）
+/api/v1/attacks/honeypot-events               for i 1→30 诱捕事件（按 honeypot_id 关联）+ SRC_IP_POOL + ATK_TYPE_POOL
 ```
 
 ### 系统管理 (system)

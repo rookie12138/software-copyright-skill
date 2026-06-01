@@ -210,9 +210,9 @@ if (handler) {
 
 ---
 
-### Step 1.2 — API 契约自动提取 (mockFetch 静态分析)
+### Step 1.2 — API 契约自动提取 (apiFetch Mock 分支静态分析)
 
-**目标**：全自动扫描前端 `mockFetch` 代码，提取 API 端点、响应 Schema 和数据库表结构。
+**目标**：全自动扫描前端 `apiFetch` Mock 分支代码，提取 API 端点、响应 Schema 和数据库表结构。
 
 **执行方式**：启动契约提取 Agent
 
@@ -220,7 +220,7 @@ if (handler) {
 1. 扫描 `js/views/*.js` 中所有 `url.includes('...')` 分支 → 提取全部 API 端点路径
 2. 解析每个分支的 `return { code, data: {...} }` → 提取响应 Schema（字段名+类型）
 3. 从字段名和值反推数据库表结构（snake_case 字段 → MySQL 列）
-4. 输出 `openapi.yaml`（与 mockFetch 接口 100% 对应）和 `database_schema.sql`（字段名完全一致）
+4. 输出 `openapi.yaml`（与 apiFetch Mock 分支 100% 对应）和 `database_schema.sql`（字段名完全一致）
 
 **关键原则**：不凭空创造接口。从 `apiFetch` 的 Mock 分支中提取。`openapi.yaml` 中的每个 path 必须能在前端 `apiFetch` Mock 分支中找到对应 `url.includes()`。
 
@@ -242,7 +242,7 @@ if (handler) {
 
 | 切片 | 触发指令 | 产出 | 核心要求 |
 |------|---------|------|---------|
-| 2.1 | `GENERATE_MODELS` | `model/*.go` (18个实体) | GORM tags + JSON snake_case tags，与 mockFetch 字段名一致 |
+| 2.1 | `GENERATE_MODELS` | `model/*.go` (18个实体) | GORM tags + JSON snake_case tags，与前端 apiFetch Mock 数据字段名一致 |
 | 2.2 | `GENERATE_REPOSITORIES` | `repository/*.go` (18个 DAO) | 分页查询、条件筛选、批量插入(事务)、ErrRecordNotFound 处理 |
 | 2.3 | `GENERATE_SERVICES` | `service/*.go` + `controller/*.go` + `main.go` | 业务聚合、errgroup/WaitGroup 并发、slog 日志、Gin 路由注册 |
 
@@ -264,7 +264,7 @@ if (handler) {
 1. 精确行数统计（排除空行和解释性注释，判断 >= 10000）
 2. Go 代码通用异常捕获扫描（`if err != nil { return err }` 无日志版本）
 3. 解释性注释正则扫描（`// 定义`、`// 获取` 等模式）
-4. 前端 mockFetch data 充分性检查（items >= 5）
+4. 前端 apiFetch Mock 数据充分性检查（items >= 5）
 5. 路由联动完整性检查（6 条关键路径）
 
 **退出码**：全部 PASS → `sys.exit(0)`，任一 FAIL → `sys.exit(1)`。

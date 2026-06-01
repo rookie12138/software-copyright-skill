@@ -34,7 +34,7 @@
 
 1. 为 `database_schema.sql` 中每张表生成对应的 struct
 2. 精确映射 gorm tags（`gorm:"column:xxx;type:xxx;primaryKey;index"`）
-3. 包含 JSON 序列化 tags（`json:"xxx"`），字段名使用 snake_case 与前端 mockFetch 数据字段保持一致
+3. 包含 JSON 序列化 tags（`json:"xxx"`），字段名使用 snake_case 与前端 apiFetch Mock 数据字段保持一致
 4. 不编写任何业务逻辑方法，纯粹的 struct 定义
 5. 每个 struct 独立一个文件，放在 `model/` 目录下
 
@@ -70,7 +70,7 @@ func (HostAsset) TableName() string {
 
 **去 AI 化要求（从 deai_rules.md）：**
 - struct 上方只有一条 Docstring 注释
-- 字段名用驼峰，JSON tag 用蛇形（与前端 mockFetch 的 snake_case 一致）
+- 字段名用驼峰，JSON tag 用蛇形（与前端 apiFetch Mock 数据的 snake_case 一致）
 - 不写 "`// 主机名称`" 等解释性注释
 
 **生成清单**（根据 database_schema.sql 中实际存在的表）：
@@ -389,7 +389,7 @@ type PagedData struct {
     Items    interface{} `json:"items"`
 }
 
-// SuccessResponse 通用成功响应体（对应前端 mockFetch 的 code: 200）。
+// SuccessResponse 通用成功响应体（对应前端 apiFetch Mock 分支的 code: 0）。
 func SuccessResponse(data interface{}) gin.H {
     return gin.H{"code": 0, "data": data}
 }

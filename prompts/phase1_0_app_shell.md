@@ -310,7 +310,7 @@ window.router = Router;
     };
 
     /* ==== 3. 渲染侧边栏菜单 ==== */
-    // 从 spec.json 中读取 enabled:true 的模块，动态生成 #sidebar-menu 的 HTML
+    // 模块列表（与 spec.json 中 enabled:true 的模块保持一致）
     var sidebarMenu = document.getElementById('sidebar-menu');
     var enabledModules = [{id:'dashboard',name:'首页',route:'/dashboard',icon:'home'},
                           {id:'asset',name:'资产中心',route:'/asset',icon:'server'},

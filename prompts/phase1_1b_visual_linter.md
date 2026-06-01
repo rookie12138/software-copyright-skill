@@ -190,8 +190,8 @@ window.decorateDashboard = function(container) {
 var handler = Router._routes[route];
 if (handler) {
     await handler(container, params);
-    // 根据路由匹配对应的装饰器
-    var decorator = window.decoratorMap[route];
+    // 根据路由匹配对应的装饰器（统一使用 Router._decoratorMap）
+    var decorator = Router._decoratorMap[route];
     if (decorator) { decorator(container); }
 }
 ```

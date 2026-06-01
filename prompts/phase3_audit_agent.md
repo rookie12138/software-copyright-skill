@@ -47,7 +47,7 @@ if err != nil \{\s*\\n\s*return
 ### 2c. JS 前端代码 — 空表格/空图表检查
 
 **逻辑**：扫描 `frontend/js/views/` 下的文件，检查：
-- `mockFetch` 中每个 `url.includes()` 分支的 `items` 数组长度是否 >= 5
+- `apiFetch` 中每个 `url.includes()` 分支的 `items` 数组长度是否 >= 5
 - 如果没有 `items` 数组，检查 `data` 中是否有全为零的统计字段
 
 ### 2d. 前端路由单向绑定检查
@@ -85,7 +85,7 @@ if err != nil \{\s*\\n\s*return
   ...
 
 [检查 4] 前端数据充分性
-  [PASS] 全部 mockFetch items >= 5
+  [PASS] 全部 apiFetch Mock items >= 5
   / [WARN] frontend/js/views/dashboard.js: alertsRes 仅 3 条 items
 
 [检查 5] 路由联动检查

@@ -5,150 +5,148 @@
  * 所有 View Component 必须严格遵循此模板结构。
  *
  * ====== 铁律 ======
- * 1. 只暴露一个全局函数：window.render{ModuleName} = function(container, params)
+ * 1. 只暴露一个全局函数：window.render{ModuleName} = async function(container, params)
  * 2. 禁止输出 <html>、<head>、<body> 标签
  * 3. 禁止编写侧边栏或顶栏
- * 4. 所有数据硬编码在函数内（Mock 数据）
- * 5. 涉及跨模块跳转时调用 router.navigate(route, params)
+ * 4. 强制双模 apiFetch：USE_MOCK=true 时算法化生成海量数据，false 时真实 fetch
+ * 5. 严禁手写 JSON 数组、严禁 // ... 省略 注释
+ * 6. 必须使用种子数组 + for 循环 + Math.sin()/random() 生成数据
  */
+
+/* ==== 双模 API 适配器 ==== */
+window.APP_CONFIG = window.APP_CONFIG || { USE_MOCK: true };
+
+async function apiFetch(url, options) {
+    options = options || {};
+
+    if (!window.APP_CONFIG.USE_MOCK) {
+        try {
+            var response = await fetch(url, {
+                method: options.method || 'GET',
+                headers: options.headers || { 'Content-Type': 'application/json' },
+                body: options.body || null
+            });
+            if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + url); }
+            return await response.json();
+        } catch (error) {
+            console.error('apiFetch error:', error.message);
+            throw error;
+        }
+    }
+
+    await new Promise(function(resolve) { setTimeout(resolve, 100); });
+
+    // 种子字典 — 所有算法化生成器共用
+    var OS_POOL       = ['VMware ESXi 7.0', 'CentOS 7.9', 'Ubuntu 22.04 LTS', 'Windows Server 2019', 'RedHat 8.2', 'Debian 11', 'OpenSUSE Leap 15.4'];
+    var ROLE_POOL     = ['DB-Master', 'K8s-Node', 'Web-Gateway', 'Redis-Cache', 'Auth-Server', 'Log-Collector', 'Nginx-Proxy'];
+    var CVE_POOL      = ['CVE-2024-37085', 'CVE-2024-6387', 'CVE-2023-46805', 'CVE-2024-21413', 'CVE-2021-44228', 'CVE-2024-3094', 'CVE-2023-44487'];
+    var ATK_TYPE_POOL = ['SQL Injection', 'SSH Brute Force', 'Log4j RCE', 'Path Traversal', 'DNS Tunneling', 'Stored XSS', 'CSRF Token Bypass', 'Cobalt Strike C2'];
+    var SRC_IP_POOL   = ['104.18.2.145', '45.122.1.22', '185.199.110.153', '103.235.46.39', '114.114.114.114', '202.112.23.161', '91.121.87.10', '218.92.0.212'];
+
+    // ═══════════════════════════════════════════════════════
+    // 接口 1：示例 — 动态生成 45 条主机资产
+    // ═══════════════════════════════════════════════════════
+    if (url.includes('/api/v1/assets/hosts')) {
+        var hostsItems = [];
+        for (var i = 1; i <= 45; i++) {
+            var role = ROLE_POOL[i % ROLE_POOL.length];
+            var os = OS_POOL[i % OS_POOL.length];
+            var cve = CVE_POOL[i % CVE_POOL.length];
+            var cvss = (9.9 - (i % 5) * 1.4 + (i % 3) * 0.3).toFixed(1);
+            if (parseFloat(cvss) > 10) { cvss = '9.8'; }
+            hostsItems.push({
+                host_id: 'HST-2026-' + (1000 + i),
+                host_name: 'PROD-' + role + '-' + (i < 10 ? '0' + i : i),
+                ip_address: '172.20.18.' + (100 + i),
+                os_name: os,
+                cve_id: cve,
+                cvss_score: parseFloat(cvss),
+                status: i % 5 === 0 ? 'in_progress' : (i % 9 === 0 ? 'fixed' : 'open')
+            });
+        }
+        var page = parseInt((options.params || {}).page || 1);
+        var pageSize = parseInt((options.params || {}).page_size || 10);
+        var start = (page - 1) * pageSize;
+        return {
+            code: 0,
+            data: { total: hostsItems.length, page: page, page_size: pageSize, items: hostsItems.slice(start, start + pageSize) }
+        };
+    }
+
+    throw new Error('未注册的 Mock API 路由: ' + url);
+}
 
 /**
  * 渲染 {模块名称} 页面。
- * @param {HTMLElement} container - 页面挂载容器（即 <main id="app-content">）
- * @param {Object} params - 路由参数对象，读取方式：params.hostId, params.alertId
+ * @param {HTMLElement} container - 页面挂载容器
+ * @param {Object} params - 路由参数对象
  */
-window.render{ModuleName} = function(container, params) {
-    // ── Step 1: 读取路由参数（如果有跨页面跳转参数传入） ──
-    var focusHostId = params.hostId || null;   // 示例：从资产中心跳转过来的主机ID
-    var focusAlertId = params.alertId || null; // 示例：从首页跳转过来的告警ID
+window.render{ModuleName} = async function(container, params) {
+    try {
+        // Step 1: 并发获取数据
+        var hostsRes = await apiFetch('/api/v1/assets/hosts?page=1&page_size=10');
+        var hosts = hostsRes.data.items;
 
-    // ── Step 2: 构建页面 HTML ──
-    var html = '';
+        // Step 2: 构建 HTML
+        var html = '';
+        html += '<div class="page-header">';
+        html += '<h2 class="section-title">{模块名称}</h2>';
+        html += '</div>';
 
-    // 2a. 页面标题
-    html += '<div class="page-header">';
-    html += '<h2 class="section-title">{模块名称}</h2>';
-    html += '</div>';
+        // 子 Tab
+        html += '<div class="sub-tabs">';
+        html += '  <div class="sub-tab active" data-tab="tab1">子模块1</div>';
+        html += '  <div class="sub-tab" data-tab="tab2">子模块2</div>';
+        html += '</div>';
 
-    // 2b. 子 Tab 导航（如果该模块有 sub_modules）
-    html += '<div class="sub-tabs">';
-    html += '  <div class="sub-tab active" data-tab="tab1">子模块1</div>';
-    html += '  <div class="sub-tab" data-tab="tab2">子模块2</div>';
-    html += '</div>';
+        // 统计卡片
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">';
+        html += '  <div class="stat-card">';
+        html += '    <div class="stat-card__value">12,847</div>';
+        html += '    <div class="stat-card__label">指标名称1</div>';
+        html += '  </div>';
+        html += '</div>';
 
-    // 2c. 统计卡片区（4张卡片）
-    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">';
-    html += '  <div class="stat-card">';
-    html += '    <div class="stat-card__value">12,847</div>';
-    html += '    <div class="stat-card__label">指标名称1</div>';
-    html += '    <div class="stat-card__trend up">↑ 12%</div>';
-    html += '  </div>';
-    html += '  <!-- ... 更多 stat-card ... -->';
-    html += '</div>';
+        // 数据表格
+        html += '<div class="card-layer-3" style="border-radius:var(--radius-card);overflow:hidden;">';
+        html += '<div class="section-title" style="padding:16px;">数据列表</div>';
+        html += '<table class="data-table data-table--striped data-table--sticky"><thead><tr>';
+        html += '<th>主机名称</th><th>IP 地址</th><th>操作系统</th><th>CVE 编号</th><th>操作</th>';
+        html += '</tr></thead><tbody>';
+        for (var i = 0; i < hosts.length; i++) {
+            var h = hosts[i];
+            html += '<tr>';
+            html += '<td>' + h.host_name + '</td>';
+            html += '<td>' + h.ip_address + '</td>';
+            html += '<td>' + h.os_name + '</td>';
+            html += '<td>' + h.cve_id + '</td>';
+            html += '<td><button class="btn btn-outline btn-detail" data-host-id="' + h.host_id + '">详情</button></td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
 
-    // 2d. 图表容器
-    html += '<div class="section-title">图表标题</div>';
-    html += '<div class="chart-container" id="chart-{module}-trend"></div>';
+        container.innerHTML = html;
 
-    // 2e. 数据表格
-    html += '<div class="section-title">表格标题</div>';
-    html += '<table class="data-table">';
-    html += '  <thead><tr>';
-    html += '    <th>列1</th><th>列2</th><th>列3</th><th>列4</th><th>操作</th>';
-    html += '  </tr></thead>';
-    html += '  <tbody>';
-    // 循环渲染至少 10 行工业级 Mock 数据
-    html += '    <tr>';
-    html += '      <td>主机SRV-BJ-001</td>';
-    html += '      <td>192.168.1.128</td>';
-    html += '      <td>Ubuntu 22.04 LTS</td>';
-    html += '      <td><span class="risk-tag risk-high">高危</span></td>';
-    html += '      <td>';
-    // 跨页面跳转按钮
-    html += '        <button class="btn btn-outline" onclick="router.navigate(\'/target-route\', {param: \'value\'})">查看详情</button>';
-    html += '      </td>';
-    html += '    </tr>';
-    // ... 共 10+ 行
-    html += '  </tbody>';
-    html += '</table>';
-
-    // ── Step 3: 将 HTML 写入容器 ──
-    container.innerHTML = html;
-
-    // ── Step 4: 绑定 Tab 切换事件 ──
-    var tabs = container.querySelectorAll('.sub-tab');
-    tabs.forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            tabs.forEach(function(t) { t.classList.remove('active'); });
-            this.classList.add('active');
-            // 切换 Tab 内容区域
-            // ...
+        // Step 3: 绑定事件
+        var detailBtns = container.querySelectorAll('.btn-detail');
+        detailBtns.forEach(function(btn) {
+            btn.onclick = function() {
+                var hostId = btn.getAttribute('data-host-id');
+                router.navigate('/target-route', { hostId: hostId });
+            };
         });
-    });
 
-    // ── Step 5: 初始化 ECharts 图表（在 innerHTML 写入后） ──
-    var chartDom = container.querySelector('#chart-{module}-trend');
-    if (chartDom) {
-        var chart = echarts.init(chartDom);
-        chart.setOption({
-            tooltip: { trigger: 'axis' },
-            legend: { data: ['入站攻击', '出站流量'], textStyle: { color: 'var(--color-text-secondary)' } },
-            grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-            xAxis: {
-                type: 'category',
-                boundaryGap: false,
-                data: ['05-01','05-02','05-03','05-04','05-05','05-06','05-07',
-                       '05-08','05-09','05-10','05-11','05-12','05-13','05-14',
-                       '05-15','05-16','05-17','05-18','05-19','05-20','05-21',
-                       '05-22','05-23','05-24','05-25','05-26','05-27','05-28',
-                       '05-29','05-30'],
-                axisLabel: { color: 'var(--color-text-secondary)' }
-            },
-            yAxis: {
-                type: 'value',
-                axisLabel: { color: 'var(--color-text-secondary)' }
-            },
-            series: [
-                {
-                    name: '入站攻击',
-                    type: 'line',
-                    data: [245, 278, 312, 289, 356, 401, 388, 423, 467, 389,
-                           512, 478, 534, 498, 567, 601, 546, 623, 589, 672,
-                           645, 701, 667, 734, 698, 756, 712, 789, 745, 823],
-                    smooth: true,
-                    lineStyle: { color: 'var(--color-danger)' },
-                    itemStyle: { color: 'var(--color-danger)' }
-                },
-                {
-                    name: '出站流量',
-                    type: 'line',
-                    data: [128, 145, 167, 134, 189, 201, 178, 212, 234, 198,
-                           256, 223, 278, 245, 301, 267, 334, 289, 356, 312,
-                           389, 345, 401, 367, 423, 389, 445, 412, 467, 434],
-                    smooth: true,
-                    lineStyle: { color: 'var(--color-accent)' },
-                    itemStyle: { color: 'var(--color-accent)' }
-                }
-            ]
-        });
-    }
-
-    // ── Step 6: 如果有路由参数，定位到对应项 ──
-    if (focusHostId) {
-        // 高亮对应主机行，或滚动到对应位置
-        // ...
+    } catch (error) {
+        container.innerHTML = '<div class="glass-card" style="text-align:center;padding:48px;"><span class="badge badge-critical">数据加载失败: ' + error.message + '</span></div>';
     }
 };
 
-// ====== 代码生成检查清单（Agent 生成后自检） ======
-//
-// [ ] 函数签名是否正确（container, params）
+// ====== 代码生成检查清单 ======
+// [ ] 函数签名是否正确（async container, params）
 // [ ] 是否有 <html>/<head>/<body> 标签（必须没有）
 // [ ] 是否自己写了 sidebar/header（必须没有）
-// [ ] 统计卡片值是否全非零
-// [ ] 表格是否有至少 10 行工业级 Mock 数据
-// [ ] 图表是否有至少 30 个时序数据点
+// [ ] apiFetch 是否使用种子数组 + for 循环（必须）
+// [ ] 表格是否有至少 10 行数据（分页展示，total >= 30）
 // [ ] 跨页面跳转是否使用 router.navigate()
-// [ ] 是否读取了路由参数 params（如适用）
 // [ ] 是否有解释性注释（必须没有）
-// [ ] 变量名是否使用了具体业务术语（而非 data/list/tmp）
+// [ ] 变量名是否使用了具体业务术语
