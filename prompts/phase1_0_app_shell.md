@@ -282,13 +282,24 @@ window.router = Router;
 
 ### 5. js/app-shell.js
 
+**这是最容易遗漏的一步。没有 `Router.on()` 注册，所有页面都是空白的！**
+
 ```javascript
 /**
  * App Shell Initializer.
- * 注册装饰器映射，启动路由器。
+ * 注册路由映射、装饰器映射，启动路由器并渲染侧边栏。
  */
 (function() {
-    // Phase 1.1b 视觉装饰器映射
+    /* ==== 1. 注册核心业务路由（路由 → 渲染函数） ==== */
+    /* 函数名必须与 Phase 1.1 中 View Component 暴露的全局函数名严格一致 */
+    Router.on('/dashboard', window.renderDashboard);
+    Router.on('/asset',     window.renderAssetCenter);
+    Router.on('/host-risk', window.renderHostRisk);
+    Router.on('/web-risk',  window.renderWebRisk);
+    Router.on('/attack',    window.renderAttackEvent);
+    Router.on('/system',    window.renderSystem);
+
+    /* ==== 2. 注册 Phase 1.1b 视觉装饰器映射 ==== */
     Router._decoratorMap = {
         '/dashboard': window.decorateDashboard,
         '/asset':     window.decorateAsset,
@@ -298,9 +309,50 @@ window.router = Router;
         '/system':    window.decorateSystem
     };
 
+    /* ==== 3. 渲染侧边栏菜单 ==== */
+    // 从 spec.json 中读取 enabled:true 的模块，动态生成 #sidebar-menu 的 HTML
+    var sidebarMenu = document.getElementById('sidebar-menu');
+    var enabledModules = [{id:'dashboard',name:'首页',route:'/dashboard',icon:'home'},
+                          {id:'asset',name:'资产中心',route:'/asset',icon:'server'},
+                          {id:'host-risk',name:'主机风险',route:'/host-risk',icon:'shield'},
+                          {id:'web-risk',name:'网站风险',route:'/web-risk',icon:'globe'},
+                          {id:'attack',name:'攻击事件',route:'/attack',icon:'crosshair'},
+                          {id:'system',name:'系统管理',route:'/system',icon:'settings'}];
+
+    var menuHtml = '';
+    enabledModules.forEach(function(mod) {
+        menuHtml += '<div class="nav-item" data-route="' + mod.route + '" data-icon="' + mod.icon + '">';
+        menuHtml += '<span class="nav-item__icon">' + mod.icon + '</span>';
+        menuHtml += '<span class="nav-item__label">' + mod.name + '</span>';
+        menuHtml += '</div>';
+    });
+    sidebarMenu.innerHTML = menuHtml;
+
+    // 侧边栏点击事件绑定
+    var navItems = sidebarMenu.querySelectorAll('.nav-item');
+    navItems.forEach(function(item) {
+        item.addEventListener('click', function() {
+            var route = this.getAttribute('data-route');
+            Router.navigate(route);
+        });
+    });
+
+    /* ==== 4. 启动路由器 ==== */
     Router.init();
 })();
 ```
+
+### 补充排查：如果页面依然空白
+
+加上了路由注册后仍空白，在浏览器按 `F12` 打开控制台，看报错：
+
+**1. `Uncaught ReferenceError: renderDashboard is not defined`**
+- 原因：`js/views/dashboard.js` 未生成，或 `index.html` 中 `<script src>` 路径写错
+- 对策：检查 `frontend/js/views/` 目录下对应的 JS 文件是否存在
+
+**2. `SyntaxError: Unexpected identifier` / `Unexpected string`**
+- 原因：某个 `js/views/*.js` 字符串拼接漏了引号或分号，整个文件语法崩溃
+- 对策：点击 Console 报错中的文件名和行号，手动补缺失的引号
 
 ---
 
@@ -314,5 +366,7 @@ window.router = Router;
 - [ ] `<main id="app-content">` 存在且为空白容器
 - [ ] CSS 变量全部来自 `spec.json`，无自由发挥
 - [ ] 公共类名 `.stat-card`、`.data-table`、`.chart-container`、`.sub-tabs` 已定义
-- [ ] `router.js` 的 `on()`、`navigate()`、`getCurrentParams()` API 可用
+- [ ] **`app-shell.js` 中 `Router.on()` 注册了全部 6 条路由**（缺一条 = 一个页面空白）
+- [ ] **`Router._decoratorMap` 中注册了全部 6 个装饰器函数**（缺一条 = 一个页面无视觉装饰）
 - [ ] `window.router` 全局可访问
+- [ ] 浏览器 Console 无 `ReferenceError` 或 `SyntaxError` 报错
