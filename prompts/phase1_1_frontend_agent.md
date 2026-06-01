@@ -6,7 +6,7 @@
 
 1. **禁止输出 `<html>`、`<head>`、`<body>`、`<script src="...">` 标签**。只输出一个 JS 文件。
 2. **禁止自行编写侧边栏或顶栏**。这些已在 App Shell 中。
-3. **强制数据解耦（核心契约）**：严禁直接在 HTML 字符串中写死业务数据。**必须**在文件顶部定义 `async function mockFetch(url, options)`，所有渲染函数通过它获取数据。
+3. **强制双模数据解耦（核心契约）**：严禁直接在 HTML 字符串中写死业务数据。**必须**在文件顶部定义 `async function apiFetch(url, options)`（双模：USE_MOCK=true 时返回本地 Mock 数据，false 时发起真实 HTTP 请求），所有渲染函数通过它获取数据。
 4. **禁止写解释性注释**。如 `// 定义变量`、`// 渲染表格`、`// 绑定事件`。
 5. **只暴露一个异步函数签名**：`window.renderXxx = async function(container, params)`。
 
@@ -19,24 +19,53 @@
 
 ---
 
-## 数据获取契约规范 (mockFetch Pattern)
+## 数据获取契约规范 (Dual-Mode API Adapter)
 
-**这是本阶段最重要的部分。你必须在文件头部按以下格式实现所有当前页面需要的数据接口：**
+**这是本阶段最重要的部分。你必须实现"双模驱动"的数据获取适配器。代码必须同时包含真实的 `fetch()` 调用和 MOCK 模式的静态数据。**
+
+### 为什么需要双模架构
+
+1. **软著审查**：审查员看到的是标准的 `fetch(url, options)` + `async/await` 动态调用逻辑，证明系统具备真实后端交互能力
+2. **截图产出**：`USE_MOCK=true` 时无需启动后端，秒级渲染带 CVE 编号和 ECharts 图表的丰富页面
+3. **契约提取**：Phase 1.2 从 Mock JSON 结构提取 `openapi.yaml`，供 Phase 2 生成真实后端
+4. **交付即部署**：设置 `USE_MOCK=false` 即可对接 Phase 2 的 Gin 后端
 
 ```javascript
 /**
- * 统一数据获取适配器。
- * URL 路径和返回 JSON 结构将被 Phase 1.2 严格提取，
- * 请保证路径语义化、字段结构完整且专业。
+ * 双模 API 适配器 (Dual-Mode API Adapter)
+ * USE_MOCK = true  : 返回本地高保真演示数据（用于开发截图与软著样本）
+ * USE_MOCK = false : 发起真实 HTTP 请求（对接 Phase 2 生成的后端服务）
  */
-async function mockFetch(url, options) {
-    // 模拟网络延迟（让渲染逻辑能正确处理异步流程）
-    await new Promise(function(resolve) { setTimeout(resolve, 100); });
+window.APP_CONFIG = window.APP_CONFIG || { USE_MOCK: true };
 
-    // ==== 示例：首页态势总览聚合接口 ====
+async function apiFetch(url, options) {
+    options = options || {};
+
+    /* ==== 真实动态调用模式 ==== */
+    if (!window.APP_CONFIG.USE_MOCK) {
+        try {
+            var response = await fetch(url, {
+                method: options.method || 'GET',
+                headers: options.headers || { 'Content-Type': 'application/json' },
+                body: options.body || null
+            });
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status + ': ' + url);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('apiFetch error:', error.message);
+            throw error;
+        }
+    }
+
+    /* ==== 静态演示数据模式 (Mock) ==== */
+    await new Promise(function(resolve) { setTimeout(resolve, 150); });
+
+    // 示例：首页态势总览聚合接口
     if (url.includes('/api/v1/dashboard/summary')) {
         return {
-            code: 200,
+            code: 0,
             data: {
                 total_assets: 12847,
                 critical_risks: 326,
@@ -46,10 +75,10 @@ async function mockFetch(url, options) {
         };
     }
 
-    // ==== 示例：高危主机列表（带分页） ====
+    // 示例：高危主机列表（带分页参数）
     if (url.includes('/api/v1/assets/hosts/high-risk')) {
         return {
-            code: 200,
+            code: 0,
             data: {
                 total: 24,
                 page: 1,
@@ -73,18 +102,16 @@ async function mockFetch(url, options) {
         };
     }
 
-    // 默认兜底
-    throw new Error('Unregistered API route: ' + url);
+    throw new Error('未注册的 Mock API 路由: ' + url);
 }
 ```
 
-**mockFetch 设计原则：**
-- 每个 `if (url.includes(...))` 分支对应后端一个真实接口
-- 返回体包含 `code` + `data`，列表接口带 `total` + `items`
-- 字段命名统一使用 snake_case（与后端数据库列名一致）
-- 时间使用 ISO 8601 格式
-- IP 使用真实内网段，端口使用真实服务端口
-- CVE 编号使用真实 CVE + 真实年份
+**双模适配器设计原则：**
+
+- `if (!window.APP_CONFIG.USE_MOCK)` 分支 → 包含真实的 `fetch()` + `response.json()` + 错误处理 → **这是软著审查员看到的"动态通信能力"证明**
+- Mock 数据放在 `if` 的隐式 `else` 分支中 → Phase 1.2 静态分析从这里提取 API 契约
+- Mock 的 `code: 0` 与后端的统一响应格式一致
+- 字段命名统一用 snake_case，时间用 ISO 8601
 
 ---
 
@@ -96,11 +123,11 @@ async function mockFetch(url, options) {
 window.renderDashboard = async function(container, params) {
     try {
         // 1. 并发获取页面所需数据
-        var summaryRes = await mockFetch('/api/v1/dashboard/summary');
-        var hostsRes = await mockFetch('/api/v1/assets/hosts/high-risk?limit=5');
-        var trendRes = await mockFetch('/api/v1/dashboard/attack-trend?days=7');
-        var distRes = await mockFetch('/api/v1/dashboard/risk-distribution');
-        var alertsRes = await mockFetch('/api/v1/alerts?limit=8');
+        var summaryRes = await apiFetch('/api/v1/dashboard/summary');
+        var hostsRes = await apiFetch('/api/v1/assets/hosts/high-risk?limit=5');
+        var trendRes = await apiFetch('/api/v1/dashboard/attack-trend?days=7');
+        var distRes = await apiFetch('/api/v1/dashboard/risk-distribution');
+        var alertsRes = await apiFetch('/api/v1/alerts?limit=8');
         
         var summary = summaryRes.data;
         var hosts = hostsRes.data.items;
@@ -240,7 +267,7 @@ window.renderDashboard = async function(container, params) {
 
 ## 路由跳转联动规则
 
-（保留原有规则，改为从 mockFetch 数据中提取 ID 参数传递）
+（保留原有规则，改为从 apiFetch 数据中提取 ID 参数传递）
 
 | 来源页面 | 触发点 | 目标路由 | 传递参数 |
 |---------|--------|---------|---------|
@@ -273,7 +300,7 @@ window.renderDashboard = async function(container, params) {
 
 | 场景 | 最少条目 |
 |------|---------|
-| 每个 mockFetch 列表接口 | 10 条 items |
+| 每个 apiFetch 列表接口 | 10 条 items |
 | ECharts 时序图 | 30 个 data points |
 | ECharts 饼图/柱状图 | 4-6 个分类 |
 | 告警列表 | 8 条 |
@@ -282,19 +309,19 @@ window.renderDashboard = async function(container, params) {
 
 - 统计数字不能全为 0
 - 图表不能全为空
-- 每个 mockFetch 分支至少返回 1 条有意义数据
+- 每个 apiFetch 分支至少返回 1 条有意义数据
 - CVSS 评分不能全为 0
 
 ---
 
-## 模块专属 mockFetch 接口清单
+## 模块专属 apiFetch 接口清单
 
-以下是各模块必须实现的 mockFetch 接口参考：
+以下是各模块必须实现的 apiFetch 接口参考：
 
 ### 首页 (dashboard)
 
 ```javascript
-async function mockFetch(url, options) {
+async function apiFetch(url, options) {
     // /api/v1/dashboard/summary — 态势总览
     // /api/v1/dashboard/attack-trend?days=7 — 攻击趋势时序数据
     // /api/v1/dashboard/risk-distribution — 风险等级分布
@@ -306,7 +333,7 @@ async function mockFetch(url, options) {
 ### 资产中心 (asset)
 
 ```javascript
-async function mockFetch(url, options) {
+async function apiFetch(url, options) {
     // /api/v1/assets/hosts?page=1&page_size=10 — 主机列表
     // /api/v1/assets/hosts/{id} — 主机详情
     // /api/v1/assets/websites?page=1&page_size=10 — 网站列表
@@ -318,7 +345,7 @@ async function mockFetch(url, options) {
 ### 主机风险 (host-risk)
 
 ```javascript
-async function mockFetch(url, options) {
+async function apiFetch(url, options) {
     // /api/v1/host-risks/vulnerabilities?page=1&page_size=10 — 漏洞列表
     // /api/v1/host-risks/scan-tasks — 扫描任务
     // /api/v1/host-risks/scan-schedules — 周期调度
@@ -329,7 +356,7 @@ async function mockFetch(url, options) {
 ### 网站风险 (web-risk)
 
 ```javascript
-async function mockFetch(url, options) {
+async function apiFetch(url, options) {
     // /api/v1/web-risks/websites?page=1&page_size=10 — 网站列表
     // /api/v1/web-risks/vulnerabilities — 网站漏洞
     // /api/v1/web-risks/monitor-status — 监测状态
@@ -340,7 +367,7 @@ async function mockFetch(url, options) {
 ### 攻击事件 (attack)
 
 ```javascript
-async function mockFetch(url, options) {
+async function apiFetch(url, options) {
     // /api/v1/attacks/events?page=1&page_size=10 — 攻击事件列表
     // /api/v1/attacks/alerts/stats — 8类威胁统计
     // /api/v1/attacks/whitelist — 白名单
@@ -353,7 +380,7 @@ async function mockFetch(url, options) {
 ### 系统管理 (system)
 
 ```javascript
-async function mockFetch(url, options) {
+async function apiFetch(url, options) {
     // /api/v1/system/config — 系统配置
     // /api/v1/system/op-logs?page=1&page_size=10 — 操作日志
     // /api/v1/system/linkage-policies — 联动策略
@@ -367,7 +394,7 @@ async function mockFetch(url, options) {
 1. 全部使用 `var` 声明变量，不使用 `let`/`const`
 2. 不使用箭头函数，全部 `function() {}`
 3. 不使用模板字面量（反引号），字符串拼接用 `+`
-4. 每个 `renderXxx()` 为 `async function`，通过 `mockFetch()` 获取数据
+4. 每个 `renderXxx()` 为 `async function`，通过 `apiFetch()` 获取数据
 5. 路由跳转使用 `router.navigate(route, params)`
 
 ---
@@ -377,8 +404,8 @@ async function mockFetch(url, options) {
 **你只负责业务逻辑和数据填充。视觉装饰在运行时由独立脚本完成。**
 
 你的 `renderXxx()` 产出后，Step 1.1b 会生成一个独立的 `decorateXxx()` 装饰器脚本，通过 DOM API 动态注入毛玻璃、状态标签、斑马纹等高级 CSS 类名。你的代码不会被修改，只需确保：
-- 在文件头部定义规范的 `async function mockFetch(url, options)` 及其所有接口分支
-- 在 `renderXxx()` 中正确调用 `mockFetch` 并解构数据
+- 在文件头部定义规范的 `async function apiFetch(url, options)` 及其所有接口分支
+- 在 `renderXxx()` 中正确调用 `apiFetch` 并解构数据
 - 正确的 DOM 结构（使用 `.stat-card`、`.data-table`、`.chart-container` 等基础类名）
 - 正确的路由跳转逻辑
 - 无解释性注释的代码

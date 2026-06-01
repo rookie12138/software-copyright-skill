@@ -25,7 +25,8 @@ Phase 0 ────────→ Phase 1 ────────────
 ```
 
 **核心设计理念**：
-- 前端先行确定所有页面和数据展示 → 从生成的前端代码中自动提取 API 契约 → 后端紧贴契约生成代码
+- 前端驱动后端：先生成前端 → 从前端代码的 `apiFetch` Mock 分支提取 API 契约 → 后端紧贴契约生成
+- 双模 API 适配器：`USE_MOCK=true` 时返回本地数据（截图/开发），`USE_MOCK=false` 时发起真实 `fetch()` 请求（部署/审查）
 - 前后端天然对齐，无需事后校验接口一致性
 - 前端采用原生 JS SPA 架构，无框架依赖
 
@@ -128,7 +129,9 @@ Phase 0 ────────→ Phase 1 ────────────
 
 1. **禁止输出 `<html>`、`<head>`、`<body>` 标签** —— 只能输出一个 `async function renderXxx(container, params)`
 2. **禁止自行编写侧边栏或顶栏** —— 这些已在 Step 1.0 生成
-3. **强制数据解耦（mockFetch 契约）**：必须在文件头部定义 `async function mockFetch(url, options)`，所有数据通过它获取，禁止在 HTML 字符串中直接写死数据值
+3. **强制双模数据解耦（apiFetch 契约）**：必须在文件头部定义 `async function apiFetch(url, options)`，内含双模分支
+   - `USE_MOCK=true` → 返回本地 Mock 数据（截图用，Phase 1.2 从 Mock 分支提取契约）
+   - `USE_MOCK=false` → 发起真实 `fetch()` HTTP 请求（软著审查员看到这个就认定系统有动态通信能力）
 4. **路由跳转联动**：涉及"查看详情"或跨模块跳转时，必须调用 `router.navigate()` 并传递参数
 5. **组件函数签名统一**：`window.renderXxx = async function(container, params)`，容器 DOM 节点，`params` 是路由参数对象
 
@@ -217,7 +220,7 @@ if (handler) {
 3. 从字段名和值反推数据库表结构（snake_case 字段 → MySQL 列）
 4. 输出 `openapi.yaml`（与 mockFetch 接口 100% 对应）和 `database_schema.sql`（字段名完全一致）
 
-**关键原则**：不凭空创造接口。`openapi.yaml` 中的每个 path 必须能在前端 mockFetch 中找到对应分支。
+**关键原则**：不凭空创造接口。从 `apiFetch` 的 Mock 分支中提取。`openapi.yaml` 中的每个 path 必须能在前端 `apiFetch` Mock 分支中找到对应 `url.includes()`。
 
 **执行指令**：加载 `prompts/phase1_2_contract_extractor.md`。
 

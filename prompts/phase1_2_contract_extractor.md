@@ -1,17 +1,24 @@
-# Phase 1.2 Prompt: API 契约自动提取 (修订版)
+# Phase 1.2 Prompt: API 契约自动提取 (双模适配版)
 
-你是 API 契约提取专家。前端团队已通过 `mockFetch` 模式实现所有页面的数据绑定。
-你的任务是从中提取真实的后端契约，**不做任何猜测或额外接口创造**。
+你是 API 契约提取专家。前端团队已通过**双模 API 适配器 (Dual-Mode API Adapter)** 模式实现数据绑定。你的任务是从中提取真实的后端契约。
 
 ## 输入
 
-- `js/views/*.js`：所有前端 View Component 源代码（含 mockFetch 定义）
+- `js/views/*.js`：所有前端 View Component 源代码（含 `apiFetch` 双模适配器）
 
-## 提取策略（严格基于 mockFetch 静态分析）
+## 关键认知
+
+`apiFetch` 函数包含两个分支：
+- `if (!window.APP_CONFIG.USE_MOCK)` → 真实 `fetch()` 调用（软著审查员看到这个就认定系统有动态通信能力）
+- Mock 数据分支 → **你从这里提取 API 端点路径和响应 Schema**
+
+**为什么从 Mock 分支提取**：Mock 分支的 JSON 结构最完整、字段名与后端 DB 列名严格一致、无需猜测字段类型。
+
+## 提取策略（严格基于 apiFetch Mock 分支静态分析）
 
 ### 步骤 1：提取端点 (Endpoints)
 
-逐个扫描 `js/views/*.js` 文件中的 `mockFetch` 函数体。
+逐个扫描 `js/views/*.js` 文件中 `apiFetch` 函数体。
 
 **扫描目标**：所有 `url.includes('...')` 中的路径字符串。
 
@@ -44,7 +51,7 @@ GET /api/v1/assets/hosts/high-risk
 **示例**：
 
 ```javascript
-// 前端 mockFetch 代码：
+// 前端 apiFetch Mock 分支代码：
 if (url.includes('/api/v1/dashboard/summary')) {
     return {
         code: 200,
@@ -117,7 +124,7 @@ DashboardSummaryResponse:
 **示例**：
 
 ```sql
--- 从前端 mockFetch 返回值自动推导
+-- 从前端 apiFetch Mock 分支自动推导
 -- 源: /api/v1/assets/hosts/high-risk → items[0]
 CREATE TABLE host_assets (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -149,7 +156,7 @@ openapi: "3.0.3"
 info:
   title: "{产品名称} API"
   version: "1.0.0"
-  description: "自动从 mockFetch 静态分析提取"
+  description: "自动从 apiFetch Mock 分支静态分析提取"
 
 servers:
   - url: http://localhost:8080/api/v1
@@ -192,8 +199,8 @@ components:
 
 ## 交付规范
 
-1. **接口对应 100%**：`openapi.yaml` 中的每个 path 必须能在前端 `mockFetch` 中找到对应的 `url.includes()` 分支
+1. **接口对应 100%**：`openapi.yaml` 中的每个 path 必须能在前端 `apiFetch` Mock 分支中找到对应的 `url.includes()` 分支
 2. **字段对应 100%**：Schema 中的每个 property 必须在前端取值代码中有对应引用（如 `summary.total_assets`）
-3. **不凭空创造**：禁止添加前端 `mockFetch` 中不存在的接口或字段
+3. **不凭空创造**：禁止添加前端 `apiFetch` Mock 分支中不存在的接口或字段
 4. **表结构自洽**：`database_schema.sql` 中的每张表必须对应至少一个 API Schema
 5. **文件保存位置**：工作目录根目录下的 `openapi.yaml` 和 `database_schema.sql`

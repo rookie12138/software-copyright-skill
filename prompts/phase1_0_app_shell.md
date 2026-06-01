@@ -66,6 +66,9 @@
         <main id="app-content"></main>
     </div>
     <!-- Scripts -->
+    <!-- 0. 全局配置（双模 API 适配器开关，必须在所有 View Component 之前加载） -->
+    <script>window.APP_CONFIG = { USE_MOCK: true };</script>
+
     <!-- 1. 路由引擎 -->
     <script src="js/router.js"></script>
 
