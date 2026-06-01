@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{产品名称} — {版本号}</title>
+    <link rel="stylesheet" href="css/variables.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+<body>
+    <!-- ====== 左侧导航栏 ====== -->
+    <aside id="sidebar">
+        <!-- Logo 区域 -->
+        <div class="sidebar-logo">
+            <div class="sidebar-logo__icon">{产品简称首字}</div>
+            <div class="sidebar-logo__text">
+                <span class="sidebar-logo__title">{产品名称}</span>
+                <span class="sidebar-logo__version">{版本号}</span>
+            </div>
+        </div>
+
+        <!-- 菜单区域 -->
+        <nav class="sidebar-nav">
+            <!-- 菜单项由 app-shell.js 根据 spec.json 动态渲染 -->
+            <div id="sidebar-menu"></div>
+        </nav>
+
+        <!-- 底部信息 -->
+        <div class="sidebar-footer">
+            <div class="sidebar-footer__status">
+                <span class="status-dot status-dot--online"></span>
+                系统运行中
+            </div>
+        </div>
+    </aside>
+
+    <!-- ====== 右侧主区域 ====== -->
+    <div id="main-area">
+        <!-- 顶部状态栏 -->
+        <header id="header">
+            <div class="header-left">
+                <span class="header-breadcrumb" id="header-breadcrumb">首页</span>
+            </div>
+            <div class="header-right">
+                <!-- 告警铃铛 -->
+                <div class="header-alert-bell" title="全局告警">
+                    <span class="bell-icon">🔔</span>
+                    <span class="bell-count" id="alert-count">3</span>
+                </div>
+                <!-- 用户信息 -->
+                <div class="header-user">
+                    <span class="header-user__avatar">管</span>
+                    <span class="header-user__name">安全管理员</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- === View Component 挂载点 === -->
+        <!-- 所有 FE-Agent 生成的页面渲染到此容器内 -->
+        <main id="app-content">
+            <!-- 初始加载中状态 -->
+            <div class="loading-skeleton">
+                <div class="loading-skeleton__text">正在加载...</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ====== JS 脚本加载（按依赖顺序） ====== -->
+    <!-- 1. 路由引擎 -->
+    <script src="js/router.js"></script>
+
+    <!-- 2. View Components（每个模块一个文件） -->
+    <script src="js/views/dashboard.js"></script>
+    <script src="js/views/asset.js"></script>
+    <script src="js/views/host-risk.js"></script>
+    <script src="js/views/web-risk.js"></script>
+    <script src="js/views/attack.js"></script>
+    <script src="js/views/system.js"></script>
+
+    <!-- 3. App Shell 初始化（最后加载，依赖于上述所有模块） -->
+    <script src="js/app-shell.js"></script>
+</body>
+</html>

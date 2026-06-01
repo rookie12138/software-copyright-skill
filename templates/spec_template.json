@@ -1,0 +1,107 @@
+{
+  "product_name": "禁卫网络数字资产安全运营平台",
+  "short_name": "禁卫安全运营平台",
+  "version": "V1.0",
+  "ui_style": "deep-blue-enterprise",
+  "css_variables": {
+    "--color-primary": "#021452",
+    "--color-primary-light": "#1a3a7a",
+    "--color-bg-main": "#0a1628",
+    "--color-bg-card": "#0f1f3d",
+    "--color-bg-sidebar": "#061230",
+    "--color-text-primary": "#e0e6f0",
+    "--color-text-secondary": "#8899bb",
+    "--color-accent": "#2196f3",
+    "--color-danger": "#f44336",
+    "--color-warning": "#ff9800",
+    "--color-success": "#4caf50",
+    "--font-family": "PingFang SC, Microsoft YaHei, sans-serif",
+    "--font-size-base": "14px",
+    "--font-size-sm": "12px",
+    "--font-size-lg": "16px",
+    "--font-size-xl": "20px",
+    "--border-radius": "4px",
+    "--sidebar-width": "240px",
+    "--header-height": "56px"
+  },
+  "modules": [
+    {
+      "id": "dashboard",
+      "name": "首页",
+      "route": "/dashboard",
+      "icon": "home",
+      "enabled": true,
+      "sub_modules": []
+    },
+    {
+      "id": "asset",
+      "name": "资产中心",
+      "route": "/asset",
+      "icon": "server",
+      "enabled": true,
+      "sub_modules": [
+        { "id": "host-asset", "name": "主机资产" },
+        { "id": "web-asset", "name": "网站资产" },
+        { "id": "traffic-risk", "name": "流量风险" },
+        { "id": "attack-surface", "name": "攻击面" }
+      ]
+    },
+    {
+      "id": "host-risk",
+      "name": "主机风险",
+      "route": "/host-risk",
+      "icon": "shield",
+      "enabled": true,
+      "sub_modules": [
+        { "id": "vuln-ledger", "name": "风险台账" },
+        { "id": "vuln-scan", "name": "漏洞扫描" },
+        { "id": "scheduled-scan", "name": "周期漏扫" },
+        { "id": "config-audit", "name": "配置核查" }
+      ]
+    },
+    {
+      "id": "web-risk",
+      "name": "网站风险",
+      "route": "/web-risk",
+      "icon": "globe",
+      "enabled": true,
+      "sub_modules": [
+        { "id": "web-ledger", "name": "网站台账" },
+        { "id": "web-vuln-scan", "name": "漏洞扫描" },
+        { "id": "web-monitor", "name": "安全监测" },
+        { "id": "pentest", "name": "渗透测试" }
+      ]
+    },
+    {
+      "id": "attack",
+      "name": "攻击事件",
+      "route": "/attack",
+      "icon": "crosshair",
+      "enabled": true,
+      "sub_modules": [
+        { "id": "monitor-center", "name": "监测中心" },
+        { "id": "whitelist", "name": "白名单" },
+        { "id": "block-policy", "name": "阻断策略" },
+        { "id": "agent-mgmt", "name": "Agent管理" },
+        { "id": "threat-alerts", "name": "威胁告警", "note": "8类威胁类别" },
+        { "id": "honeypot", "name": "蜜罐配置", "note": "6类蜜罐" }
+      ]
+    },
+    {
+      "id": "system",
+      "name": "系统管理",
+      "route": "/system",
+      "icon": "settings",
+      "enabled": true,
+      "sub_modules": [
+        { "id": "sys-config", "name": "系统配置" },
+        { "id": "sys-upgrade", "name": "在线升级" },
+        { "id": "sys-diagnose", "name": "诊断工具" },
+        { "id": "probe-deploy", "name": "探针部署" },
+        { "id": "param-mgmt", "name": "参数管理" },
+        { "id": "op-log", "name": "操作日志" },
+        { "id": "linkage-policy", "name": "联动策略" }
+      ]
+    }
+  ]
+}
