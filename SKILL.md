@@ -25,8 +25,9 @@ Phase 0 ────────→ Phase 1 ────────────
 ```
 
 **核心设计理念**：
-- 前端驱动后端：先生成前端 → 从前端代码的 `apiFetch` Mock 分支提取 API 契约 → 后端紧贴契约生成
-- 双模 API 适配器：`USE_MOCK=true` 时返回本地数据（截图/开发），`USE_MOCK=false` 时发起真实 `fetch()` 请求（部署/审查）
+- 前端驱动后端：先生成前端 → 从 `apiFetch` Mock 分支提取 API 契约 → 后端紧贴契约生成
+- 双模 API 适配器：`USE_MOCK=true` 时本地算法化生成海量数据，`USE_MOCK=false` 时发起真实 `fetch()`
+- 算法化数据引擎：种子数组 + for 循环 + Math.sin()/random() → 极低 Token 消耗生成 30-60 条工业级数据
 - 前后端天然对齐，无需事后校验接口一致性
 - 前端采用原生 JS SPA 架构，无框架依赖
 
@@ -129,9 +130,10 @@ Phase 0 ────────→ Phase 1 ────────────
 
 1. **禁止输出 `<html>`、`<head>`、`<body>` 标签** —— 只能输出一个 `async function renderXxx(container, params)`
 2. **禁止自行编写侧边栏或顶栏** —— 这些已在 Step 1.0 生成
-3. **强制双模数据解耦（apiFetch 契约）**：必须在文件头部定义 `async function apiFetch(url, options)`，内含双模分支
-   - `USE_MOCK=true` → 返回本地 Mock 数据（截图用，Phase 1.2 从 Mock 分支提取契约）
-   - `USE_MOCK=false` → 发起真实 `fetch()` HTTP 请求（软著审查员看到这个就认定系统有动态通信能力）
+3. **强制双模 + 算法化数据解耦（apiFetch 契约）**：
+   - `USE_MOCK=true` → 算法化动态生成海量 Mock 数据（for 循环 + 种子数组 + Math.sin/random）
+   - `USE_MOCK=false` → 发起真实 `fetch()` HTTP 请求
+   - 严禁手写 JSON 数组、严禁 `// ... 省略` 注释
 4. **路由跳转联动**：涉及"查看详情"或跨模块跳转时，必须调用 `router.navigate()` 并传递参数
 5. **组件函数签名统一**：`window.renderXxx = async function(container, params)`，容器 DOM 节点，`params` 是路由参数对象
 
