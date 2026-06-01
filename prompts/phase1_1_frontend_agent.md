@@ -374,12 +374,13 @@ async function mockFetch(url, options) {
 
 ## 重要提示
 
-**你只负责业务逻辑和数据填充，不需要过度关注视觉细节。**
-你产出的组件会由 Step 1.1b 的 `ui-ux-pro-max` 视觉修饰器进行精装修。请聚焦于：
+**你只负责业务逻辑和数据填充。视觉装饰在运行时由独立脚本完成。**
+
+你的 `renderXxx()` 产出后，Step 1.1b 会生成一个独立的 `decorateXxx()` 装饰器脚本，通过 DOM API 动态注入毛玻璃、状态标签、斑马纹等高级 CSS 类名。你的代码不会被修改，只需确保：
 - 在文件头部定义规范的 `async function mockFetch(url, options)` 及其所有接口分支
 - 在 `renderXxx()` 中正确调用 `mockFetch` 并解构数据
-- 正确的 DOM 结构（使用 `.glass-card`、`.data-table`、`.chart-container` 等类名）
+- 正确的 DOM 结构（使用 `.stat-card`、`.data-table`、`.chart-container` 等基础类名）
 - 正确的路由跳转逻辑
 - 无解释性注释的代码
 
-视觉层面的工作交给 Step 1.1b。
+视觉层面的升级由 `window.decorateXxx(container)` 在渲染后全自动完成。

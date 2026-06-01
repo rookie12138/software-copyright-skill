@@ -160,30 +160,46 @@ Phase 0 ────────→ Phase 1 ────────────
 
 ---
 
-### Step 1.1b — 视觉修饰精装修（ui-ux-pro-max 拦截器）
+### Step 1.1b — 视觉装饰器注入（DOM Decorator 模式）
 
-**目标**：ui-ux-pro-max 作为视觉拦截器，对每个 View Component 进行精装修。不加业务逻辑，只提升视觉品质。
+**目标**：生成无侵入式的 DOM 装饰器脚本，在业务渲染完成后动态注入高级 CSS 类名。
 
-**工作流**：
+**核心设计**：**不修改原始 View Component 代码**。装饰器是独立的 JS 文件，通过标准 DOM API 查找元素并注入 class。
+
 ```
-FE-Agent 输出纯逻辑+Mock数据组件
-        ↓
-ui-ux-pro-max 视觉修饰（保留所有逻辑和变量绑定）
-        ↓
-最终写入 js/views/xxx.js
+Step 1.1: renderXxx(container, params)     → 纯业务渲染
+Step 1.1b: decorateXxx(container)           → 视觉装饰（由 ui-ux-pro-max 产出）
 ```
 
-**ui-ux-pro-max 对本步骤的职责（不做业务逻辑）：**
+**产出文件**：`js/decorators/{module}_decorator.js`（每个模块一个装饰器）
 
-| 修饰维度 | 要求 |
-|----------|------|
-| 卡片装饰 | 为 `.stat-card` / `.glass-card` 添加内发光边框 `box-shadow: inset 0 0 0 1px rgba(33,150,243,0.15)` + 多层外阴影 |
-| 排版留白 | 优化 `.stat-card__value` 与 `.stat-card__label` 的间距，为数值区增加虚拟空间呼吸感 |
-| 状态标签 | 确保 "高危/危急/正常" 使用 design-system 的 `.badge-*` 类，带微渐变 + 高对比度文字 |
-| Z 轴层级 | Dashboard 中使用 `.card-layer-1`（前景统计卡）、`.card-layer-2`（图表区）、`.card-layer-3`（表格区）区分视觉深度 |
-| 表格质感 | 强制应用 `.data-table--striped`（斑马纹）、`.data-table--sticky`（表头冻结+深色背景） |
-| 图表配色 | 图表中状态色严格使用 design-system 的 `--chart-critical`、`--chart-high` 等变量 |
-| 按钮质感 | 确保所有 `.btn` 有 hover/active/focus 三态过渡动画，无原生丑陋样式 |
+**装饰器函数签名**：`window.decorateXxx = function(container) {}`
+
+**装饰维度**：
+
+| # | 目标元素 | 装饰动作 |
+|---|---------|---------|
+| 1 | `.stat-card` | 替换为 `.glass-card.card-layer-1` + hover 悬浮微动效 |
+| 2 | `.data-table` | 追加 `.data-table--striped.data-table--sticky`，动态包裹 `.card-layer-3` |
+| 3 | 含"危急/高危/正常"等文本的 span | 动态注入 `.badge-*` 类，清除旧内联样式 |
+| 4 | `.btn-primary` | 追加 `box-shadow` 霓虹光晕 |
+| 5 | `.col-threat` | critical→红色加粗，high→橙色加粗 |
+
+**路由器集成**（在 `router.js` 的 `_render` 中，渲染后自动调用对应装饰器）：
+
+```javascript
+var decoratorMap = {
+    '/dashboard': window.decorateDashboard,
+    '/asset':     window.decorateAsset,
+    // ...
+};
+var handler = Router._routes[route];
+if (handler) {
+    await handler(container, params);
+    var decorator = decoratorMap[route];
+    if (decorator) { decorator(container); }
+}
+```
 
 **执行指令**：加载 `prompts/phase1_1b_visual_linter.md`。
 
@@ -231,32 +247,38 @@ ui-ux-pro-max 视觉修饰（保留所有逻辑和变量绑定）
 
 ---
 
-## Phase 3：审查清洗 + 软著交付
+## Phase 3：自动化审查 + 软著交付（Python 脚本化）
 
-### Step 3.1 — 代码审查
+### Step 3.1 — 代码审计（Python 静态分析脚本）
 
-**执行方式**：启动审查 Agent
+**目标**：生成 `audit_tool.py`，在本地 Python 环境运行，精确执行代码质量审查。
 
-**审查项**：
-1. 扫描注释残留（解释性注释、TODO、FIXME）
-2. 扫描通用异常捕获
-3. 确认总代码行数 >= 10000
-4. 确认前端 Mock 数据非空、非占位
+**不再让 LLM 数行号或徒手审代码。改为生成自动化脚本。**
+
+**脚本检查项**：
+1. 精确行数统计（排除空行和解释性注释，判断 >= 10000）
+2. Go 代码通用异常捕获扫描（`if err != nil { return err }` 无日志版本）
+3. 解释性注释正则扫描（`// 定义`、`// 获取` 等模式）
+4. 前端 mockFetch data 充分性检查（items >= 5）
+5. 路由联动完整性检查（6 条关键路径）
+
+**退出码**：全部 PASS → `sys.exit(0)`，任一 FAIL → `sys.exit(1)`。
 
 **执行指令**：加载 `prompts/phase3_audit_agent.md`。
 
-### Step 3.2 — 软著材料组装
+### Step 3.2 — 软著材料组装（python-docx 自动化脚本）
 
-**执行方式**：启动组装 Agent
+**目标**：生成 `build_copyright_docs.py`，利用 `python-docx` 完成精确排版。
 
-**交付产物**：
+**不再让 LLM 手工拼接文本排 Word 文档。改为生成自动化打包脚本。**
 
-| 产物 | 格式 | 说明 |
-|------|------|------|
-| 源代码文档 | `.docx` | 前后端代码拼接 → 去空行 → 50行/页 → 取前30页+后30页=60页 |
-| 系统截图集 | `.docx` | 每个子页面 1-2 张带数据截图 |
-| 操作手册 | `.docx` | 基于截图按模块编写操作流程 |
-| 完整源码包 | `.zip` | 全部代码归档 |
+**脚本功能**：
+1. **`source_code.docx`**：取前 1500 行（前 30 页）+ 后 1500 行（后 30 页），Courier New 9pt，精确 50 行/页
+2. **`screenshots.docx`**：遍历 `./screenshots` 目录，每页 1 张图 + 描述文字 + 分页符
+3. **`user_manual.docx`**：7 章操作手册，每章配截图
+4. **`source_code.zip`**：完整源码打包
+
+**产物输出到 `output/` 目录。**
 
 **执行指令**：加载 `prompts/phase3_assemble_agent.md`。
 

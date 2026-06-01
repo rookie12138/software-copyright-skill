@@ -19,16 +19,17 @@
 
 - Sidebar 菜单根据 `spec.json` 动态生成
 - 每个路由对应 `<main id="app-content">` 内的挂载区域
-- 后续 View Components 只需要实现 `render(container, params)` 函数即可接入
+- 后续 View Components 只需要实现 `async function renderXxx(container, params)` 即可接入
+- **路由器必须集成装饰器调度**：渲染完成后自动调用对应的 `window.decorateXxx(container)`
 
 ## 必须产出的文件
 
 | 文件 | 说明 |
 |------|------|
-| `index.html` | 唯一入口文件 |
+| `index.html` | 唯一入口文件，引入所有 View Component JS + Decorator JS |
 | `css/variables.css` | CSS 自定义属性 |
 | `css/layout.css` | 全局布局 |
-| `js/router.js` | SPA 路由器 |
+| `js/router.js` | SPA 路由器（含装饰器调度映射表） |
 | `js/app-shell.js` | 应用初始化入口 |
 
 ---
@@ -65,11 +66,26 @@
         <main id="app-content"></main>
     </div>
     <!-- Scripts -->
+    <!-- 1. 路由引擎 -->
     <script src="js/router.js"></script>
-    <!-- 各 View Component 按需加载入口 -->
+
+    <!-- 2. View Components（每个模块一个文件） -->
     <script src="js/views/dashboard.js"></script>
     <script src="js/views/asset.js"></script>
-    <!-- ... 其余模块 ... -->
+    <script src="js/views/host-risk.js"></script>
+    <script src="js/views/web-risk.js"></script>
+    <script src="js/views/attack.js"></script>
+    <script src="js/views/system.js"></script>
+
+    <!-- 3. Visual Decorators（Phase 1.1b 产出，无侵入 DOM 装饰） -->
+    <script src="js/decorators/dashboard_decorator.js"></script>
+    <script src="js/decorators/asset_decorator.js"></script>
+    <script src="js/decorators/host_risk_decorator.js"></script>
+    <script src="js/decorators/web_risk_decorator.js"></script>
+    <script src="js/decorators/attack_decorator.js"></script>
+    <script src="js/decorators/system_decorator.js"></script>
+
+    <!-- 4. App Shell 初始化 -->
     <script src="js/app-shell.js"></script>
 </body>
 </html>
@@ -182,6 +198,8 @@ const Router = {
     _routes: {},
     _currentRoute: null,
     _currentParams: null,
+    /** 路由 → 视觉装饰器映射表（Phase 1.1b 产出） */
+    _decoratorMap: {},
 
     on(route, handler) {
         this._routes[route] = handler;
@@ -202,18 +220,21 @@ const Router = {
         return this._currentParams || {};
     },
 
-    _render() {
-        // 清楚旧内容
-        const container = document.getElementById('app-content');
+    _render: async function() {
+        var container = document.getElementById('app-content');
         container.innerHTML = '';
 
-        // 执行路由对应的渲染函数
-        const handler = this._routes[this._currentRoute];
+        var handler = this._routes[this._currentRoute];
         if (handler) {
-            handler(container, this._currentParams);
+            await handler(container, this._currentParams);
         }
 
-        // 更新 Sidebar 激活态
+        /* ==== 视觉装饰器调度 ==== */
+        var decorator = this._decoratorMap[this._currentRoute];
+        if (decorator && typeof decorator === 'function') {
+            decorator(container);
+        }
+
         this._updateSidebar();
     },
 
@@ -261,9 +282,19 @@ window.router = Router;
 ```javascript
 /**
  * App Shell Initializer.
- * 启动路由器，完成应用初始化。
+ * 注册装饰器映射，启动路由器。
  */
 (function() {
+    // Phase 1.1b 视觉装饰器映射
+    Router._decoratorMap = {
+        '/dashboard': window.decorateDashboard,
+        '/asset':     window.decorateAsset,
+        '/host-risk': window.decorateHostRisk,
+        '/web-risk':  window.decorateWebRisk,
+        '/attack':    window.decorateAttackEvent,
+        '/system':    window.decorateSystem
+    };
+
     Router.init();
 })();
 ```
