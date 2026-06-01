@@ -225,7 +225,13 @@ with zipfile.ZipFile('output/source_code.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
             arcname = os.path.relpath(filepath, '.')
             zf.write(filepath, arcname)
 
-    # database
+    # database schema（Phase 1.2 产出在根目录）
+    if os.path.exists('database_schema.sql'):
+        zf.write('database_schema.sql')
+    if os.path.exists('openapi.yaml'):
+        zf.write('openapi.yaml')
+
+    # database directory（如有额外 SQL 文件）
     if os.path.exists('./database'):
         for root, dirs, files in os.walk('./database'):
             for file in files:

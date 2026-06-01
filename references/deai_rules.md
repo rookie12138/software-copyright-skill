@@ -255,8 +255,13 @@ slog.Error("db_query_failed", "table", "host_assets", "error", err, "query_time_
 ## 规则 7：HTTP 接口规范
 
 ```go
-// 统一的分页响应格式
+// 统一的分页响应格式（与前端 apiFetch Mock 分支的 code+data 结构一致）
 type PagedResponse struct {
+    Code int       `json:"code"`
+    Data PagedData `json:"data"`
+}
+
+type PagedData struct {
     Total    int64       `json:"total"`
     Page     int         `json:"page"`
     PageSize int         `json:"page_size"`

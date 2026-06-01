@@ -50,7 +50,7 @@ Phase 0 ────────→ Phase 1 ────────────
 | 色彩矩阵 CSS 变量 | `design-system/colors.css` | 主色 → 辅助色 → 中性色，每色 9 级透明度映射 |
 | 玻璃拟态特效 CSS | `design-system/effects.css` | `.glass-card`、`.glass-panel`、`.glass-sidebar` 等毛玻璃类 |
 | 状态标签系统 | `design-system/badges.css` | `.badge-critical`、`.badge-high`、`.badge-warning`、`.badge-info` 渐变背景 |
-| ECharts 暗黑主题 | `design-system/echarts-dark-theme.json` | 完整 ECharts 主题 JSON，配色与全局变量一致 |
+| ECharts 暗黑主题 | `design-system/echarts-dark-theme.js` | 完整 ECharts 主题 JS（挂载为 window.ECHARTS_DARK_CYBER_THEME），配色与全局变量一致 |
 | 卡片层级系统 | `design-system/layers.css` | `.card-layer-1`、`.card-layer-2`、`.card-layer-3` 背景色差体现 Z 轴层级 |
 | 表格高级样式 | `design-system/table-advanced.css` | 斑马纹 `.data-table--striped`、表头冻结 `.data-table--sticky`、图标高亮 |
 

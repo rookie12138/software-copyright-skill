@@ -295,10 +295,14 @@ Dashboard 设计中利用背景色差体现 Z 轴层次：
 
 ---
 
-**产出 6：`design-system/echarts-dark-theme.json` — ECharts 暗黑主题**
+**产出 6：`design-system/echarts-dark-theme.js` — ECharts 暗黑主题**
 
-```json
-{
+**重要**：必须输出为 `.js` 文件（而非 `.json`），用 `window.ECHARTS_DARK_CYBER_THEME = {...}` 挂载到全局变量。这样可通过 `<script>` 同步加载，确保在 View Component 初始化前主题已注册。
+
+```javascript
+// design-system/echarts-dark-theme.js
+// Phase 0 产出 — ECharts 暗黑主题，由 app-shell.js 中 echarts.registerTheme('dark-cyber', window.ECHARTS_DARK_CYBER_THEME) 注册
+window.ECHARTS_DARK_CYBER_THEME = {
   "color": [
     "#2196f3", "#f44336", "#ff9800", "#ffeb3b",
     "#4caf50", "#9c27b0", "#00bcd4", "#e91e63"
@@ -309,7 +313,7 @@ Dashboard 设计中利用背景色差体现 Z 轴层次：
   "tooltip": { "backgroundColor": "rgba(15,31,61,0.95)", "borderColor": "rgba(33,150,243,0.3)" },
   "categoryAxis": { "axisLine": { "lineStyle": { "color": "rgba(255,255,255,0.08)" } }, "axisLabel": { "color": "#8899bb" }, "splitLine": { "lineStyle": { "color": "rgba(255,255,255,0.04)" } } },
   "valueAxis": { "axisLine": { "show": false }, "axisLabel": { "color": "#8899bb" }, "splitLine": { "lineStyle": { "color": "rgba(255,255,255,0.04)" } } }
-}
+};
 ```
 
 ---

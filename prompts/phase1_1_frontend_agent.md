@@ -6,9 +6,9 @@
 
 1. **禁止输出 `<html>`、`<head>`、`<body>`、`<script src="...">` 标签**。只输出一个 JS 文件。
 2. **禁止自行编写侧边栏或顶栏**。这些已在 App Shell 中。
-3. **强制双模数据解耦（核心契约）**：严禁直接在 HTML 字符串中写死业务数据。**必须**在文件顶部定义 `async function apiFetch(url, options)`（双模：USE_MOCK=true 时返回本地 Mock 数据，false 时发起真实 HTTP 请求），所有渲染函数通过它获取数据。
+3. **强制双模数据解耦（核心契约）**：严禁直接在 HTML 字符串中写死业务数据。**必须**在 IIFE 内部定义 `async function apiFetch(url, options)`（双模：USE_MOCK=true 时返回本地 Mock 数据，false 时发起真实 HTTP 请求），所有渲染函数通过它获取数据。**apiFetch 必须是 IIFE 闭包内的私有函数，禁止暴露为全局变量**——否则多文件加载时全局 apiFetch 会被覆盖，导致非当前模块的接口全部报错。
 4. **禁止写解释性注释**。如 `// 定义变量`、`// 渲染表格`、`// 绑定事件`。
-5. **只暴露一个异步函数签名**：`window.renderXxx = async function(container, params)`。
+5. **只暴露一个异步函数签名**：`window.renderXxx = async function(container, params)`。整个文件用 IIFE 包裹，apiFetch 定义在 IIFE 内部。
 
 ## 输入
 
@@ -41,39 +41,45 @@
  * 双模 API 适配器 (Dual-Mode + Algorithmic Mock)
  * USE_MOCK=true  : 算法化动态生成高保真演示数据
  * USE_MOCK=false : 发起真实 HTTP 请求
+ *
+ * 重要：整个文件必须用 IIFE 包裹，apiFetch 为闭包私有函数，
+ * 防止多个 View Component 文件加载时全局 apiFetch 被覆盖。
  */
-window.APP_CONFIG = window.APP_CONFIG || { USE_MOCK: true };
+(function() {
+    'use strict';
 
-async function apiFetch(url, options) {
-    options = options || {};
+    var APP_CONFIG = window.APP_CONFIG || { USE_MOCK: true };
 
-    /* ==== 真实动态调用模式 ==== */
-    if (!window.APP_CONFIG.USE_MOCK) {
-        try {
-            var response = await fetch(url, {
-                method: options.method || 'GET',
-                headers: options.headers || { 'Content-Type': 'application/json' },
-                body: options.body || null
-            });
-            if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + url); }
-            return await response.json();
-        } catch (error) {
-            console.error('apiFetch error:', error.message);
-            throw error;
+    async function apiFetch(url, options) {
+        options = options || {};
+
+        /* ==== 真实动态调用模式 ==== */
+        if (!APP_CONFIG.USE_MOCK) {
+            try {
+                var response = await fetch(url, {
+                    method: options.method || 'GET',
+                    headers: options.headers || { 'Content-Type': 'application/json' },
+                    body: options.body || null
+                });
+                if (!response.ok) { throw new Error('HTTP ' + response.status + ': ' + url); }
+                return await response.json();
+            } catch (error) {
+                console.error('apiFetch error:', error.message);
+                throw error;
+            }
         }
-    }
 
-    /* ==== 算法化 Mock 生成引擎 ==== */
-    await new Promise(function(resolve) { setTimeout(resolve, 100); });
+        /* ==== 算法化 Mock 生成引擎 ==== */
+        await new Promise(function(resolve) { setTimeout(resolve, 100); });
 
-    // ═══════════════════════════════════════════════════════
-    // 种子字典 — 所有算法化生成器共用的专业术语池
-    // ═══════════════════════════════════════════════════════
-    var OS_POOL      = ['VMware ESXi 7.0', 'CentOS 7.9', 'Ubuntu 22.04 LTS', 'Windows Server 2019', 'RedHat 8.2', 'Debian 11', 'OpenSUSE Leap 15.4'];
-    var ROLE_POOL    = ['DB-Master', 'K8s-Node', 'Web-Gateway', 'Redis-Cache', 'Auth-Server', 'Log-Collector', 'Nginx-Proxy'];
-    var CVE_POOL     = ['CVE-2024-37085', 'CVE-2024-6387', 'CVE-2023-46805', 'CVE-2024-21413', 'CVE-2021-44228', 'CVE-2024-3094', 'CVE-2023-44487'];
-    var ATK_TYPE_POOL = ['SQL Injection', 'SSH Brute Force', 'Log4j RCE', 'Path Traversal', 'DNS Tunneling', 'Stored XSS', 'CSRF Token Bypass', 'Cobalt Strike C2'];
-    var SRC_IP_POOL   = ['104.18.2.145', '45.122.1.22', '185.199.110.153', '103.235.46.39', '114.114.114.114', '202.112.23.161', '91.121.87.10', '218.92.0.212'];
+        // ═══════════════════════════════════════════════════════
+        // 种子字典 — 所有算法化生成器共用的专业术语池
+        // ═══════════════════════════════════════════════════════
+        var OS_POOL      = ['VMware ESXi 7.0', 'CentOS 7.9', 'Ubuntu 22.04 LTS', 'Windows Server 2019', 'RedHat 8.2', 'Debian 11', 'OpenSUSE Leap 15.4'];
+        var ROLE_POOL    = ['DB-Master', 'K8s-Node', 'Web-Gateway', 'Redis-Cache', 'Auth-Server', 'Log-Collector', 'Nginx-Proxy'];
+        var CVE_POOL     = ['CVE-2024-37085', 'CVE-2024-6387', 'CVE-2023-46805', 'CVE-2024-21413', 'CVE-2021-44228', 'CVE-2024-3094', 'CVE-2023-44487'];
+        var ATK_TYPE_POOL = ['SQL Injection', 'SSH Brute Force', 'Log4j RCE', 'Path Traversal', 'DNS Tunneling', 'Stored XSS', 'CSRF Token Bypass', 'Cobalt Strike C2'];
+        var SRC_IP_POOL   = ['104.18.2.145', '45.122.1.22', '185.199.110.153', '103.235.46.39', '114.114.114.114', '202.112.23.161', '91.121.87.10', '218.92.0.212'];
 
     // ═══════════════════════════════════════════════════════
     // 接口 1：动态生成 45 条高危主机资产
@@ -176,7 +182,11 @@ async function apiFetch(url, options) {
     }
 
     throw new Error('未注册的 Mock API 路由: ' + url);
-}
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 以下为 renderDashboard 及其他渲染函数（均在 IIFE 内部）
+    // ═══════════════════════════════════════════════════════
 ```
 
 ### 算法化设计原则（铁律）
@@ -209,7 +219,7 @@ async function apiFetch(url, options) {
 **在你的主函数中，必须先获取数据，再构建 DOM：**
 
 ```javascript
-window.renderDashboard = async function(container, params) {
+    window.renderDashboard = async function(container, params) {
     try {
         // 1. 并发获取页面所需数据
         var summaryRes = await apiFetch('/api/v1/dashboard/summary');
@@ -350,6 +360,8 @@ window.renderDashboard = async function(container, params) {
         container.innerHTML = '<div class="glass-card" style="text-align:center;padding:48px;"><span class="badge badge-critical">数据加载失败: ' + error.message + '</span></div>';
     }
 };
+
+})(); // end IIFE
 ```
 
 ---
@@ -478,8 +490,9 @@ window.renderDashboard = async function(container, params) {
 1. 全部使用 `var` 声明变量，不使用 `let`/`const`
 2. 不使用箭头函数，全部 `function() {}`
 3. 不使用模板字面量（反引号），字符串拼接用 `+`
-4. 每个 `renderXxx()` 为 `async function`，通过 `apiFetch()` 获取数据
-5. 路由跳转使用 `router.navigate(route, params)`
+4. 每个文件用 IIFE 包裹，`apiFetch` 为闭包内私有函数，只暴露 `window.renderXxx`
+5. `window.renderXxx` 为 `async function`，通过闭包内的 `apiFetch()` 获取数据
+6. 路由跳转使用 `router.navigate(route, params)`
 
 ---
 
@@ -488,8 +501,8 @@ window.renderDashboard = async function(container, params) {
 **你只负责业务逻辑和数据填充。视觉装饰在运行时由独立脚本完成。**
 
 你的 `renderXxx()` 产出后，Step 1.1b 会生成一个独立的 `decorateXxx()` 装饰器脚本，通过 DOM API 动态注入毛玻璃、状态标签、斑马纹等高级 CSS 类名。你的代码不会被修改，只需确保：
-- 在文件头部定义规范的 `async function apiFetch(url, options)` 及其所有接口分支
-- 在 `renderXxx()` 中正确调用 `apiFetch` 并解构数据
+- 在 IIFE 内部定义 `async function apiFetch(url, options)` 及其所有接口分支（闭包私有，不会与其他模块冲突）
+- 在 `window.renderXxx()` 中正确调用闭包内的 `apiFetch` 并解构数据
 - 正确的 DOM 结构（使用 `.stat-card`、`.data-table`、`.chart-container` 等基础类名）
 - 正确的路由跳转逻辑
 - 无解释性注释的代码

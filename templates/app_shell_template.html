@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="css/variables.css">
     <link rel="stylesheet" href="css/layout.css">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- ECharts 暗黑主题（Phase 0 产出） -->
+    <script src="design-system/echarts-dark-theme.js"></script>
 </head>
 <body>
     <!-- ====== 左侧导航栏 ====== -->
@@ -74,10 +76,13 @@
     </div>
 
     <!-- ====== JS 脚本加载（按依赖顺序） ====== -->
+    <!-- 0. 全局配置（双模 API 适配器开关，必须在所有 View Component 之前加载） -->
+    <script>window.APP_CONFIG = { USE_MOCK: true };</script>
+
     <!-- 1. 路由引擎 -->
     <script src="js/router.js"></script>
 
-    <!-- 2. View Components（每个模块一个文件） -->
+    <!-- 2. View Components（每个模块一个文件，IIFE 包裹互不干扰） -->
     <script src="js/views/dashboard.js"></script>
     <script src="js/views/asset.js"></script>
     <script src="js/views/host-risk.js"></script>
@@ -85,7 +90,15 @@
     <script src="js/views/attack.js"></script>
     <script src="js/views/system.js"></script>
 
-    <!-- 3. App Shell 初始化（最后加载，依赖于上述所有模块） -->
+    <!-- 3. Visual Decorators（Phase 1.1b 产出，无侵入 DOM 装饰） -->
+    <script src="js/decorators/dashboard_decorator.js"></script>
+    <script src="js/decorators/asset_decorator.js"></script>
+    <script src="js/decorators/host_risk_decorator.js"></script>
+    <script src="js/decorators/web_risk_decorator.js"></script>
+    <script src="js/decorators/attack_decorator.js"></script>
+    <script src="js/decorators/system_decorator.js"></script>
+
+    <!-- 4. App Shell 初始化（最后加载，依赖路由+视图+装饰器全部就绪） -->
     <script src="js/app-shell.js"></script>
 </body>
 </html>

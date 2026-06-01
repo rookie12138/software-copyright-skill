@@ -2,7 +2,7 @@
   "product_name": "禁卫网络数字资产安全运营平台",
   "short_name": "禁卫安全运营平台",
   "version": "V1.0",
-  "ui_style": "deep-blue-enterprise",
+  "ui_style": "dark-cyber-security",
   "css_variables": {
     "--color-primary": "#021452",
     "--color-primary-light": "#1a3a7a",

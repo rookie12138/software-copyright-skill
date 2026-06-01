@@ -71,7 +71,7 @@ window.decorateDashboard = function(container) {
         if (!table.parentElement.classList.contains('card-layer-3')) {
             var wrapper = document.createElement('div');
             wrapper.className = 'card-layer-3';
-            wrapper.style.borderRadius = 'var(--card-radius)';
+            wrapper.style.borderRadius = 'var(--radius-card)';
             wrapper.style.overflow = 'hidden';
             table.parentNode.insertBefore(wrapper, table);
             wrapper.appendChild(table);

@@ -56,6 +56,8 @@
     <link rel="stylesheet" href="css/layout.css">
     <!-- ECharts CDN -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- ECharts 暗黑主题（Phase 0 产出，同步加载确保 View Component 初始化前就绪） -->
+    <script src="design-system/echarts-dark-theme.js"></script>
 </head>
 <body>
     <!-- Sidebar -->
@@ -126,7 +128,8 @@
     --header-height: 56px;
     --content-padding: 24px;
     --card-padding: 20px;
-    --card-radius: 8px;
+    --radius-card: 8px;
+    --radius-lg: 12px;
 
     /* === 图表配色（网络安全主题） === */
     --chart-critical: #f44336;
@@ -165,19 +168,19 @@ body {
 #app-content { flex: 1; padding: var(--content-padding); overflow-y: auto; }
 
 /* 公共组件类名 */
-.stat-card { background: var(--color-bg-card); border-radius: var(--card-radius); padding: var(--card-padding); }
+.stat-card { background: var(--color-bg-card); border-radius: var(--radius-card); padding: var(--card-padding); }
 .stat-card__value { font-size: 28px; font-weight: 700; color: var(--color-accent); }
 .stat-card__label { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; }
 .stat-card__trend { font-size: 12px; }
 .stat-card__trend.up { color: var(--color-danger); }
 .stat-card__trend.down { color: var(--color-success); }
 
-.data-table { width: 100%; border-collapse: collapse; background: var(--color-bg-card); border-radius: var(--card-radius); overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; background: var(--color-bg-card); border-radius: var(--radius-card); overflow: hidden; }
 .data-table th { text-align: left; padding: 12px 16px; font-size: 12px; color: var(--color-text-secondary); text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .data-table td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); }
 .data-table tr:hover td { background: rgba(33,150,243,0.05); }
 
-.chart-container { width: 100%; aspect-ratio: 16/9; background: var(--color-bg-card); border-radius: var(--card-radius); }
+.chart-container { width: 100%; aspect-ratio: 16/9; background: var(--color-bg-card); border-radius: var(--radius-card); }
 
 .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
 .btn-primary { background: var(--color-primary); color: #fff; }
@@ -309,20 +312,25 @@ window.router = Router;
         '/system':    window.decorateSystem
     };
 
-    /* ==== 3. 渲染侧边栏菜单 ==== */
+    /* ==== 3. 注册 ECharts 暗黑主题 ==== */
+    if (window.ECHARTS_DARK_CYBER_THEME && window.echarts) {
+        echarts.registerTheme('dark-cyber', window.ECHARTS_DARK_CYBER_THEME);
+    }
+
+    /* ==== 4. 渲染侧边栏菜单 ==== */
     // 模块列表（与 spec.json 中 enabled:true 的模块保持一致）
     var sidebarMenu = document.getElementById('sidebar-menu');
-    var enabledModules = [{id:'dashboard',name:'首页',route:'/dashboard',icon:'home'},
-                          {id:'asset',name:'资产中心',route:'/asset',icon:'server'},
-                          {id:'host-risk',name:'主机风险',route:'/host-risk',icon:'shield'},
-                          {id:'web-risk',name:'网站风险',route:'/web-risk',icon:'globe'},
-                          {id:'attack',name:'攻击事件',route:'/attack',icon:'crosshair'},
-                          {id:'system',name:'系统管理',route:'/system',icon:'settings'}];
+    var enabledModules = [{id:'dashboard',name:'首页',route:'/dashboard',icon:'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1'},
+                          {id:'asset',name:'资产中心',route:'/asset',icon:'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2'},
+                          {id:'host-risk',name:'主机风险',route:'/host-risk',icon:'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z'},
+                          {id:'web-risk',name:'网站风险',route:'/web-risk',icon:'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9'},
+                          {id:'attack',name:'攻击事件',route:'/attack',icon:'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'},
+                          {id:'system',name:'系统管理',route:'/system',icon:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z'}];
 
     var menuHtml = '';
     enabledModules.forEach(function(mod) {
-        menuHtml += '<div class="nav-item" data-route="' + mod.route + '" data-icon="' + mod.icon + '">';
-        menuHtml += '<span class="nav-item__icon">' + mod.icon + '</span>';
+        menuHtml += '<div class="nav-item" data-route="' + mod.route + '">';
+        menuHtml += '<svg class="nav-item__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="' + mod.icon + '"/></svg>';
         menuHtml += '<span class="nav-item__label">' + mod.name + '</span>';
         menuHtml += '</div>';
     });
