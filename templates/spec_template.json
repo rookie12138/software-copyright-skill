@@ -40,10 +40,10 @@
       "icon": "server",
       "enabled": true,
       "sub_modules": [
-        { "id": "host-asset", "name": "主机资产" },
-        { "id": "web-asset", "name": "网站资产" },
-        { "id": "traffic-risk", "name": "流量风险" },
-        { "id": "attack-surface", "name": "攻击面" }
+        { "id": "host-asset", "name": "主机资产", "note": "参考 page_asset.md §2.2.1: 资产指纹识别 + Agent存活监测" },
+        { "id": "web-asset", "name": "网站资产", "note": "参考 page_asset.md §2.2.2: 业务画像 + 影子资产探测" },
+        { "id": "attack-surface", "name": "攻击面测绘", "note": "参考 page_asset.md §2.2.4: 端口暴露监测 + ESI评分" },
+        { "id": "traffic-risk", "name": "流量风险画像", "note": "参考 page_asset.md §2.2.3: 多维协议解析 + 异常基线对比" }
       ]
     },
     {
@@ -53,10 +53,10 @@
       "icon": "shield",
       "enabled": true,
       "sub_modules": [
-        { "id": "vuln-ledger", "name": "风险台账" },
-        { "id": "vuln-scan", "name": "漏洞扫描" },
-        { "id": "scheduled-scan", "name": "周期漏扫" },
-        { "id": "config-audit", "name": "配置核查" }
+        { "id": "vuln-ledger", "name": "风险台账", "note": "参考 page_host_risk.md §3.2.1: 多维资产对齐追踪 + 全局漏洞图谱" },
+        { "id": "vuln-scan", "name": "漏洞扫描引擎", "note": "参考 page_host_risk.md §3.2.2: 异构环境深度支持 + 高并发防御性调度" },
+        { "id": "scheduled-scan", "name": "周期漏扫与差异分析", "note": "参考 page_host_risk.md §3.2.3: Cron调度 + 增量漏洞计算" },
+        { "id": "config-audit", "name": "基线配置核查", "note": "参考 page_host_risk.md §3.2.4: SNMPv3/SSH/WMI无Agent采集 + 合规标准映射" }
       ]
     },
     {
@@ -66,10 +66,10 @@
       "icon": "globe",
       "enabled": true,
       "sub_modules": [
-        { "id": "web-ledger", "name": "网站台账" },
-        { "id": "web-vuln-scan", "name": "漏洞扫描" },
-        { "id": "web-monitor", "name": "安全监测" },
-        { "id": "pentest", "name": "渗透测试" }
+        { "id": "web-ledger", "name": "网站台账", "note": "参考 page_web_risk.md §4.2.1: 应用指纹识别 + 跨层级链路映射" },
+        { "id": "web-vuln-scan", "name": "深度漏洞扫描引擎", "note": "参考 page_web_risk.md §4.2.2: SPA架构解析 + OWASP Top 10" },
+        { "id": "web-monitor", "name": "安全监测中心", "note": "参考 page_web_risk.md §4.2.3: 重保态势监测 + 暗链篡改核查 + SLA保障" },
+        { "id": "pentest", "name": "自动化渗透测试", "note": "参考 page_web_risk.md §4.2.4: 攻击链路模拟 + OOB盲打验证" }
       ]
     },
     {
@@ -79,12 +79,12 @@
       "icon": "crosshair",
       "enabled": true,
       "sub_modules": [
-        { "id": "monitor-center", "name": "监测中心" },
+        { "id": "monitor-center", "name": "实时态势监测", "note": "参考 page_attack.md §5.2.1: 多源数据聚类分析 + 攻击拓扑演进图" },
+        { "id": "threat-alerts", "name": "威胁告警矩阵", "note": "参考 page_attack.md §5.2.2: 8类核心威胁告警" },
+        { "id": "honeypot", "name": "蜜罐诱捕防御", "note": "参考 page_attack.md §5.2.3: 6类高仿真蜜罐 + 文件级诱饵" },
+        { "id": "block-agent", "name": "自动化阻断与Agent管理", "note": "参考 page_attack.md §5.2.4: 自适应阻断 + eBPF Agent" },
         { "id": "whitelist", "name": "白名单" },
-        { "id": "block-policy", "name": "阻断策略" },
-        { "id": "agent-mgmt", "name": "Agent管理" },
-        { "id": "threat-alerts", "name": "威胁告警", "note": "8类威胁类别" },
-        { "id": "honeypot", "name": "蜜罐配置", "note": "6类蜜罐" }
+        { "id": "block-policy", "name": "阻断策略" }
       ]
     },
     {

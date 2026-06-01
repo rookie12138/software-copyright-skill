@@ -12,14 +12,34 @@
 
 **逻辑**：
 - 遍历 `backend/` 下所有 `.go` 文件
-- 遍历 `frontend/js/views/` 下所有 `.js` 文件
-- 遍历 `frontend/js/decorators/` 下所有 `.js` 文件（如有）
+- 遍历 `js/` 下所有 `.js` 文件
+- 遍历 `css/` 和 `design-system/` 下所有 `.css` 文件
+- 遍历根目录 `database_schema.sql` 和 `openapi.yaml`
 - 排除空白行（`line.strip() == ''`）
-- 排除整行注释行（以 `//` 开头的行，且不是 `// FuncName` 格式的 Docstring 判断：如果 `//` 后紧跟大写字母或 `@`，视为 Docstring，保留计入）
+- 排除整行注释行——**但必须保留 Docstring**：
+
+```python
+def is_docstring_line(line):
+    """区分 Docstring（保留）和普通注释（删除）"""
+    stripped = line.strip()
+    if stripped.startswith("// "):
+        rest = stripped[3:]
+        # 大写字母开头或 @ 标签 → Docstring
+        if rest and (rest[0].isupper() or rest.startswith("@")):
+            return True
+        # Func/func 开头 → Go 风格 Docstring
+        if rest.startswith("Func") or rest.startswith("func "):
+            return True
+    # JSDoc / Go 块注释风格
+    if stripped.startswith("/**") or stripped.startswith(" *") or stripped.startswith("*/"):
+        return True
+    return False
+```
 
 **判定标准**：
 - 有效行数 >= 10000：`[PASS] 代码行数达标: NNNN 行`
 - 有效行数 < 10000：`[FAIL] 代码行数不达标: NNNN 行（差 NNNN 行）`
+- 分别统计 `frontend/`、`backend/`、`SQL+YAML` 三个分区行数
 
 ---
 
@@ -35,20 +55,34 @@ if err != nil \{\s*\\n\s*return
 
 判定：每个匹配项输出 `[WARN] 文件:行号 — 裸返回错误（缺少 slog 日志）`
 
-### 2b. Go 代码 — 解释性注释
+### 2b. Go/JS 代码 — 解释性注释
 
-**正则扫描模式**（匹配以下中文注释模式）：
-```
-^\\s*//\\s*(定义|获取|设置|创建|删除|更新|查询|连接|初始化|遍历|判断|计算|返回|声明|赋值|配置|注册)
+**正则扫描模式**（匹配中文动词开头的 AI 风格注释）：
+
+```python
+EXPLANATORY_PATTERNS = [
+    r'^\s*//\s*(定义|获取|设置|创建|删除|更新|查询|连接|初始化|遍历|判断|计算|返回|声明|赋值|配置|注册|处理|调用|发送|接收|解析|格式化|实例化|打开|关闭)',
+    r'^\s*/\*\s*(定义|获取|设置|创建|删除|更新|查询|连接|初始化|遍历|判断|计算|返回|声明|赋值|配置|注册)',
+]
 ```
 
 判定：每个匹配项输出 `[WARN] 文件:行号 — 解释性注释: "注释内容"`
 
-### 2c. JS 前端代码 — 空表格/空图表检查
+### 2c. JS 前端代码 — 算法化数据生成模式检测
 
-**逻辑**：扫描 `frontend/js/views/` 下的文件，检查：
-- `apiFetch` 中每个 `url.includes()` 分支的 `items` 数组长度是否 >= 5
-- 如果没有 `items` 数组，检查 `data` 中是否有全为零的统计字段
+**背景**：View Component 使用算法化 Mock（IIFE 内的 `apiFetch` + `for` 循环 + 种子数组），不再有手写 JSON 字面量数组。传统"数字面量数组条目数"检测已失效。
+
+**正确的检查逻辑**：
+
+1. 验证每个 `apiFetch` 的 `url.includes()` 分支内存在 `for` 循环（`for (var i =` 或 `for (let i =`）
+2. 验证每个 `for` 循环内使用了种子数组引用（如 `ROLE_POOL[i % ROLE_POOL.length]`）
+3. 验证 `for` 循环上界 >= 5（如 `i <= 45`、`i <= 30`）
+4. 如果找到手写 JSON 字面量数组 `[...]`，标记为 WARN（违反算法化铁律）
+
+判定：
+- 找到手写字面量数组 → `[WARN] 文件:行号 — 发现手写 JSON 数组，违反算法化铁律`
+- for 循环上界 < 5 → `[WARN] 文件:行号 — for 循环上界过小: N`
+- 全部分支通过 → `[PASS] 前端算法化数据生成模式检查通过`
 
 ### 2d. 前端路由单向绑定检查
 
@@ -84,9 +118,10 @@ if err != nil \{\s*\\n\s*return
   [WARN] backend/repository/host_asset_repo.go:23 — "// 获取主机列表"
   ...
 
-[检查 4] 前端数据充分性
-  [PASS] 全部 apiFetch Mock items >= 5
-  / [WARN] frontend/js/views/dashboard.js: alertsRes 仅 3 条 items
+[检查 4] 前端算法化数据生成模式
+  [PASS] 全部 apiFetch Mock 分支使用 for 循环 + 种子数组
+  / [WARN] frontend/js/views/dashboard.js: 发现手写 JSON 数组，违反算法化铁律
+  / [WARN] frontend/js/views/asset.js: for 循环上界过小: 3
 
 [检查 5] 路由联动检查
   [PASS] 全部路由存在对应组件

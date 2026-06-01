@@ -43,6 +43,8 @@ Phase 0 ────────→ Phase 1 ────────────
 3. **调用 `ui-ux-pro-max` 生成全局设计系统**（见下方详细说明）
 4. 汇总生成 `spec.json` + `design-system/` 目录
 
+**⚠ spec.json 子模块名称对齐**：`spec.json` 中每个模块的 `sub_modules` 名称必须严格遵循 `references/page_*.md` 中的章节标题（如"风险台账"而非"漏洞列表"，"深度漏洞扫描引擎"而非"漏洞扫描"）。
+
 **Step 3 — ui-ux-pro-max 的职责是"定调子"，不碰业务代码：**
 
 | 产出物 | 文件路径 | 说明 |
@@ -114,7 +116,11 @@ Phase 0 ────────→ Phase 1 ────────────
 
 **目标**：为每个启用模块生成纯页面级视图组件。
 
-**输入**：`spec.json` + App Shell 已生成的 `index.html`、`css/variables.css`、`js/router.js`
+**输入**：`spec.json` + App Shell 已生成的 `index.html`、`css/variables.css`、`js/router.js` + **`references/page_*.md` 业务内容规格**
+
+**⚠ 内容与样式双轨驱动**：
+- **样式**（怎么画）由 `ui-ux-pro-max` 设计系统决定（颜色、间距、毛玻璃效果）
+- **内容**（画什么）由 `references/page_*.md` 业务规格决定（子Tab名称、KPI指标、表格列、图表类型、特殊业务字段如 ESI/暗链/OOB）
 
 **并行策略**：为每个一级模块启动独立的 FE-Agent（5 个并行）
 
@@ -261,11 +267,11 @@ if (handler) {
 **不再让 LLM 数行号或徒手审代码。改为生成自动化脚本。**
 
 **脚本检查项**：
-1. 精确行数统计（排除空行和解释性注释，判断 >= 10000）
-2. Go 代码通用异常捕获扫描（`if err != nil { return err }` 无日志版本）
-3. 解释性注释正则扫描（`// 定义`、`// 获取` 等模式）
-4. 前端 apiFetch Mock 数据充分性检查（items >= 5）
-5. 路由联动完整性检查（6 条关键路径）
+1. 精确行数统计（排除空行和解释性注释，**保留 Docstring**——大写字母开头/`@`标签/`/** */` 块注释，判断 >= 10000）
+2. Go 代码通用异常捕获扫描（`if err != nil { return err }` 无日志版本，向前看4行检测）
+3. 解释性注释正则扫描（20 个中文动词模式：定义/获取/设置/创建/删除/更新/查询/连接/初始化/遍历/判断/计算/返回/声明/赋值/配置/注册/处理/调用/发送/接收/解析/格式化/实例化/打开/关闭）
+4. 前端 apiFetch Mock 数据充分性检查（算法化生成模式下检测 for 循环 + 种子数组存在性）
+5. 路由联动完整性检查（Router.on 注册 + router.navigate 目标 + window.renderXxx 定义三方交叉验证）
 
 **退出码**：全部 PASS → `sys.exit(0)`，任一 FAIL → `sys.exit(1)`。
 
@@ -278,10 +284,11 @@ if (handler) {
 **不再让 LLM 手工拼接文本排 Word 文档。改为生成自动化打包脚本。**
 
 **脚本功能**：
-1. **`source_code.docx`**：取前 1500 行（前 30 页）+ 后 1500 行（后 30 页），Courier New 9pt，精确 50 行/页
-2. **`screenshots.docx`**：遍历 `./screenshots` 目录，每页 1 张图 + 描述文字 + 分页符
-3. **`user_manual.docx`**：7 章操作手册，每章配截图
-4. **`source_code.zip`**：完整源码打包
+1. **`source_code.docx`**：取前 1500 行（前 30 页）+ 后 1500 行（后 30 页），Courier New 9pt，精确 50 行/页。**含去AI化处理**：自动剥离解释性注释、注入工程师口吻的文件头描述（HUMAN_DESCRIPTIONS）和层级描述
+2. **`screenshots.docx`**：遍历 `./screenshots` 目录，每页 1 张图 + 中文描述标题 + 分页符（16 张截图标准映射表）
+3. **`user_manual.docx`**：5 章操作手册（首页/资产测绘/主机检测/网站检测/攻击事件），每章 2-6 个子节，含详细功能描述文案
+4. **`source_code.zip`**：完整源码打包 + 自动生成 README.txt
+5. **`manifest.json`**：构建清单，记录去AI化处理标记和产出物路径
 
 **产物输出到 `output/` 目录。**
 

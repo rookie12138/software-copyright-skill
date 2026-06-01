@@ -16,6 +16,30 @@
 - `css/variables.css` → 已有的 CSS 变量名（引用时使用 `var(--xxx)`）
 - `css/layout.css` → 已有的全局类名（`.glass-card`、`.data-table`、`.chart-container`、`.sub-tabs`、`.btn` 等）
 - `js/router.js` → `window.router` API（`navigate()`, `getCurrentParams()`）
+- **`references/page_*.md` → 各模块的业务内容权威规格（必须遵循）**
+
+---
+
+## ⚠ 业务内容权威来源（强制遵循）
+
+**样式**由 ui-ux-pro-max 设计系统决定（颜色、间距、毛玻璃效果），**内容**由以下参考文档决定（子模块名称、KPI 指标、表格列、图表类型、功能特性）。
+
+生成前端代码时，每个模块的**子 Tab 名称、统计卡片指标名、表格列定义、图表配置、详情弹窗字段**必须严格遵循对应参考文档，不得自行发明。
+
+| 模块 | 参考文档 | 子模块清单 |
+|------|---------|-----------|
+| 首页 | `references/page_dashboard.md` | KPI 指标区 + 流量攻击趋势图 + 风险等级分布图 + 实时攻击监测列表 |
+| 资产中心 | `references/page_asset.md` | 主机资产 / 网站资产 / 攻击面测绘 / 流量风险画像 |
+| 主机风险 | `references/page_host_risk.md` | 风险台账 / 漏洞扫描引擎 / 周期漏扫与差异分析 / 基线配置核查 |
+| 网站风险 | `references/page_web_risk.md` | 网站台账 / 深度漏洞扫描引擎 / 安全监测中心 / 自动化渗透测试 |
+| 攻击事件 | `references/page_attack.md` | 实时态势监测 / 威胁告警矩阵 / 蜜罐诱捕防御 / 自动化阻断与Agent管理 |
+
+**具体对齐要求**：
+1. **子 Tab 名称**必须与参考文档的章节标题一致（如"风险台账"，不是"漏洞列表"）
+2. **KPI 卡片指标**必须与参考文档的"核心业务指标"一致（如"受控主机资产数"，不是"资产总数"）
+3. **表格列字段**必须涵盖参考文档描述的元数据（如攻击事件必须含"源 IP + 攻击载荷/类型 + 处置状态"）
+4. **图表类型**必须与参考文档描述的呈现方式匹配（如"风险等级分布图"= 饼图/环形图，"流量攻击趋势图"= 折线/面积图）
+5. **特殊业务概念**必须体现在数据结构中（如攻击面的"暴露风险指数 ESI"、网站资产的"影子资产"标记、主机风险的"MAC/UUID 资产对齐"）
 
 ---
 
@@ -150,7 +174,9 @@
                 dst_ip: '172.20.19.' + (10 + (k % 45)),
                 attack_type: atkType,
                 level: k % 7 === 0 ? 'critical' : (k % 3 === 0 ? 'high' : (k % 4 === 0 ? 'low' : 'medium')),
-                status: k % 4 === 0 ? 'blocked' : 'alerted'
+                status: k % 4 === 0 ? 'blocked' : (k % 4 === 1 ? 'isolated' : (k % 4 === 2 ? 'intercepting' : 'passed'))
+                // 处置状态必须包含4种: intercepted(拦截中) / blocked(已阻断) / passed(已放行) / isolated(已隔离)
+                // 参考 page_dashboard.md §1.2.3
             });
         }
         return { code: 0, data: { total: alerts.length, items: alerts } };
@@ -210,6 +236,17 @@
 - `ATK_TYPE_POOL` — 8 种真实攻击向量
 - `SRC_IP_POOL` — 8 个真实外部 IP 段
 
+**根据模块需要，额外包含以下专业术语池（来源：参考文档 page_*.md）：**
+
+- `FRAMEWORK_POOL` — Web 应用框架: `['Spring Boot', 'Django', 'Express', 'Laravel', 'ThinkPHP', 'Flask', 'Gin']`
+- `WEB_SERVER_POOL` — Web 服务器: `['Nginx', 'Apache', 'IIS', 'Tomcat', 'OpenResty', 'Caddy']`
+- `ATK_CATEGORY_POOL` — 8类威胁告警: `['应用漏洞类', '暴力破解类', '异常通信类', '横向移动类', '数据外泄类', '恶意代码类', '中间件安全类', '诱捕告警类']`
+- `OWASP_POOL` — OWASP Top 10: `['A01-权限控制失效', 'A02-加密失败', 'A03-注入', 'A04-不安全设计', 'A05-安全配置错误', 'A06-过时组件', 'A07-身份认证失败', 'A08-软件完整性失败', 'A09-日志监控不足', 'A10-SSRF']`
+- `HONEYPOT_TYPE_POOL` — 蜜罐类型: `['SSH服务', 'MySQL服务', 'Redis服务', 'Web后台', 'Git仓库', 'OA办公系统']`
+- `COLLECT_PROTOCOL_POOL` — 配置核查采集协议: `['SNMPv3', 'SSH', 'WMI', 'Agent']`
+- `COMPLIANCE_POOL` — 合规标准: `['等保2.0', 'CIS Benchmark', 'ISO 27001', '自定义基线']`
+- `VULN_STATUS_POOL` — 漏洞修复流转: `['open', 'in_progress', 'fixed', 'accepted_risk']`
+
 种子数组中每一项必须是工业级专业术语，不能用 `os1`, `os2` 等通用命名。
 
 ---
@@ -238,7 +275,7 @@
         var html = '';
         html += '<div class="dashboard-container">';
         
-        // KPI 卡片区
+        // KPI 卡片区（指标名称必须与 page_dashboard.md §1.2.1 一致）
         html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:24px;">';
         html += '  <div class="glass-card card-layer-1">';
         html += '    <div class="stat-card__value">' + summary.total_assets.toLocaleString() + '</div>';
@@ -248,13 +285,16 @@
         html += '    <div class="stat-card__value">' + summary.critical_risks.toLocaleString() + '</div>';
         html += '    <div class="stat-card__label">高危风险资产数</div>';
         html += '  </div>';
-        // ... 更多卡片
+        html += '  <div class="glass-card card-layer-1">';
+        html += '    <div class="stat-card__value">' + summary.alerts_24h.toLocaleString() + '</div>';
+        html += '    <div class="stat-card__label">实时威胁告警数</div>';
+        html += '  </div>';
         html += '</div>';
         
-        // 图表区
+        // 图表区（图表类型必须与 page_dashboard.md §1.2.2 一致）
         html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:24px;">';
-        html += '  <div class="chart-container card-layer-2" id="chart-attack-trend"></div>';
-        html += '  <div class="chart-container card-layer-2" id="chart-risk-dist"></div>';
+        html += '  <div class="chart-container card-layer-2" id="chart-attack-trend"><div class="section-title" style="padding:12px;">流量攻击趋势</div></div>';
+        html += '  <div class="chart-container card-layer-2" id="chart-risk-dist"><div class="section-title" style="padding:12px;">风险等级分布</div></div>';
         html += '</div>';
         
         // 高危主机表格
@@ -276,11 +316,11 @@
         }
         html += '</tbody></table></div>';
         
-        // 实时告警列表
+        // 实时攻击监测列表（字段必须与 page_dashboard.md §1.2.3 一致：源IP + 攻击载荷/类型 + 处置状态）
         html += '<div class="card-layer-3" style="margin-top:20px;border-radius:var(--radius-card);overflow:hidden;">';
-        html += '<div class="section-title" style="padding:16px;">实时威胁告警</div>';
+        html += '<div class="section-title" style="padding:16px;">实时攻击监测</div>';
         html += '<table class="data-table data-table--striped data-table--sticky"><thead><tr>';
-        html += '<th>时间</th><th>源 IP</th><th>目标 IP</th><th>攻击类型</th><th>威胁等级</th><th>处置状态</th><th>操作</th>';
+        html += '<th>时间</th><th>源 IP</th><th>目标 IP</th><th>攻击载荷/类型</th><th>威胁等级</th><th>处置状态</th><th>操作</th>';
         html += '</tr></thead><tbody>';
         for (var j = 0; j < alerts.length; j++) {
             var a = alerts[j];
@@ -419,59 +459,125 @@
 
 以下是各模块必须实现的接口 + 算法化生成指南：
 
-### 首页 (dashboard)
+### 首页 (dashboard) — 参考 `page_dashboard.md`
 
 ```
-接口路径                                     生成方式
-/api/v1/dashboard/summary                   静态聚合值（total_assets=12847, critical_risks=326, alerts_24h=1892, protection_coverage=94.7）
+接口路径                                     生成方式 & 字段要求
+/api/v1/dashboard/summary                   聚合值 — total_assets(受控主机资产数), critical_risks(高危风险资产数), alerts_24h(实时威胁告警数)
+                                            三个指标名称必须与参考文档 §1.2.1 一致
 /api/v1/dashboard/attack-trend?days=30       for day 1→30 + Math.sin(day/3.5)*350 + Math.random()*250
-/api/v1/dashboard/risk-distribution          静态分布值（critical:256, high:842, medium:3145, low:8604）
-/api/v1/alerts?page=1&page_size=10           for k 1→60 + ATK_TYPE_POOL[k%8] + SRC_IP_POOL[k%8]
+                                            流量攻击趋势图（5分钟粒度），字段: date, inbound, outbound
+                                            图表类型: 折线/面积图（参考 §1.2.2）
+/api/v1/dashboard/risk-distribution          分布值 — critical(危急), high(高危), medium(中危), low(低危)
+                                            四维度名称必须与参考文档 §1.2.2 一致
+                                            图表类型: 饼图/环形图
+/api/v1/alerts?page=1&page_size=10           for k 1→60 + ATK_TYPE_POOL + SRC_IP_POOL
+                                            实时攻击监测列表（参考 §1.2.3）
+                                            字段必须包含: src_ip(源IP), attack_type(攻击载荷/类型), status(处置状态: 拦截中/已阻断/已放行/已隔离)
 /api/v1/assets/hosts/high-risk?limit=5       从 hosts 总列表中取 cvss_score >= 7.0 的前 5 条
+                                            高危风险资产 TOP 5 快速入口
 ```
 
-### 资产中心 (asset)
+### 资产中心 (asset) — 参考 `page_asset.md`
 
 ```
-接口路径                                     生成方式
+接口路径                                     生成方式 & 字段要求
 /api/v1/assets/hosts?page=1&page_size=10     for i 1→45 + ROLE_POOL + OS_POOL + CVE_POOL + IP动态偏移
-/api/v1/assets/hosts/{id}                    从 hosts 列表中按 host_id 查找单条
-/api/v1/assets/websites?page=1&page_size=10   for i 1→35 + DOMAIN_POOL + SERVER_POOL（Nginx/Apache/IIS/Tomcat）
-/api/v1/assets/attack-surface                for i 1→30 端口暴露统计（22,3389,445,6379,3306...）+ ESI 评分算法
+                                            主机资产（参考 §2.2.1）
+                                            必须包含: os_name+os_version(资产指纹识别), agent_status(存活监测: online/offline/offline_warning)
+                                            必须包含: mac_address(UUID唯一标识, 用于跨网段资产对齐)
+/api/v1/assets/hosts/{id}                    从 hosts 列表中按 host_id 查找单条（主机详情弹窗）
+/api/v1/assets/websites?page=1&page_size=10   for i 1→35 + DOMAIN_POOL + SERVER_POOL
+                                            网站资产（参考 §2.2.2）
+                                            必须包含: framework(应用框架: Spring Boot/Django/Express), web_server(Nginx/IIS/Apache/Tomcat)
+                                            必须包含: ssl_status(SSL证书有效状态), is_shadow(影子资产标记: true/false)
+                                            必须包含: linked_server_ip(跨层级链路映射: 关联底层服务器IP)
+/api/v1/assets/attack-surface                for i 1→30 端口暴露统计
+                                            攻击面测绘（参考 §2.2.4）
+                                            必须包含: open_ports(开放端口列表, 重点关注3389/445/6379/3306)
+                                            必须包含: esi_score(暴露风险指数, 参考文档中的ESI概念)
 /api/v1/assets/traffic-stats                 for day 1→7 + 面积图数据
+                                            流量风险画像（参考 §2.2.3）
+                                            必须包含: protocol_type(协议分类: HTTP/DNS/SSH/非标), is_anomaly(是否异常基线偏离)
 ```
 
-### 主机风险 (host-risk)
+### 主机风险 (host-risk) — 参考 `page_host_risk.md`
 
 ```
-接口路径                                     生成方式
+接口路径                                     生成方式 & 字段要求
 /api/v1/host-risks/vulnerabilities            for i 1→50 + CVE_POOL + host_id动态关联 + cvss动态梯度
-/api/v1/host-risks/scan-tasks                 for i 1→20 扫描任务（active/completed/failed）
-/api/v1/host-risks/scan-schedules             for i 1→8 Cron调度（daily/weekly/monthly）
-/api/v1/host-risks/config-audits              for i 1→15 + CHECK_ITEM_POOL（密码策略/文件权限/服务状态...）
+                                            风险台账（参考 §3.2.1）
+                                            必须包含: mac_address(底层物理MAC, 用于资产对齐追踪), device_interface(网络设备接口)
+                                            必须包含: fix_status(修复状态流转: open→in_progress→fixed), vuln_trend(漏洞趋势: new/fixed/unchanged)
+/api/v1/host-risks/scan-tasks                 for i 1→20 扫描任务
+                                            漏洞扫描引擎（参考 §3.2.2）
+                                            必须包含: target_type(异构环境: linux_vm/windows_physical/esxi/container)
+                                            必须包含: thread_pool_size(线程池配置), io_timeout_ms(I/O超时阈值, 防拥塞调度)
+/api/v1/host-risks/scan-schedules             for i 1→8 Cron调度
+                                            周期漏扫与差异分析（参考 §3.2.3）
+                                            必须包含: cron_expression(标准Cron表达式), new_vulns_count(新增漏洞), fixed_vulns_count(已修复漏洞)
+                                            增量差异高亮展示: "新增"标红 + "已修复"标绿
+/api/v1/host-risks/config-audits              for i 1→15 + CHECK_ITEM_POOL
+                                            基线配置核查（参考 §3.2.4）
+                                            必须包含: collect_protocol(采集协议: SNMPv3/SSH/WMI, 无Agent模式)
+                                            必须包含: compliance_standard(合规标准: 等保2.0/CIS Benchmark/自定义)
+                                            必须包含: check_result(pass/fail/warning)
 ```
 
-### 网站风险 (web-risk)
+### 网站风险 (web-risk) — 参考 `page_web_risk.md`
 
 ```
-接口路径                                     生成方式
+接口路径                                     生成方式 & 字段要求
 /api/v1/web-risks/websites                    for i 1→30 + DOMAIN_POOL + SERVER_POOL
-/api/v1/web-risks/vulnerabilities             for i 1→40 + OWASP_CATEGORY_POOL（SQLi/XSS/SSRF/XXE/IDOR...）
+                                            网站台账（参考 §4.2.1）
+                                            必须包含: framework(应用框架自动识别), web_server(Web服务器类型)
+                                            必须包含: ssl_expiry_date(SSL证书有效期), linked_server_ip(跨层级链路映射至底层服务器)
+/api/v1/web-risks/vulnerabilities             for i 1→40 + OWASP_CATEGORY_POOL
+                                            深度漏洞扫描引擎（参考 §4.2.2）
+                                            必须包含: owasp_category(OWASP Top 10分类: A01-A10)
+                                            必须包含: is_spa_detected(是否SPA架构: Vue/React/传统MPA)
+                                            必须包含: vuln_type(SQLi/XSS/XXE/反序列化/SSRF/IDOR)
 /api/v1/web-risks/monitor-status              for i 1→20 + HTTP状态码 + TTFB动态值
-/api/v1/web-risks/pentest-tasks               for i 1→12 渗透测试任务（pending/running/completed）
+                                            安全监测中心（参考 §4.2.3）
+                                            必须包含: is_heavy_guard(是否重保增强监测模式)
+                                            必须包含: darklink_found(暗链检测结果), tamper_detected(篡改检测结果)
+                                            必须包含: ttfb_ms(首字节时间), status_code(HTTP状态码), uptime_pct(可用性SLA)
+/api/v1/web-risks/pentest-tasks               for i 1→12 渗透测试任务
+                                            自动化渗透测试（参考 §4.2.4）
+                                            必须包含: attack_chain(攻击链路: 边界突破→提权→横向移动)
+                                            必须包含: oob_verified(带外验证状态: DNSLog/HTTPLog/未验证)
+                                            必须包含: vuln_chain_ids(串联的漏洞ID列表)
 ```
 
-### 攻击事件 (attack)
+### 攻击事件 (attack) — 参考 `page_attack.md`
 
 ```
-接口路径                                     生成方式
-/api/v1/attacks/events                        for i 1→60 + ATK_TYPE_POOL + SRC_IP_POOL（同 alerts 表）
+接口路径                                     生成方式 & 字段要求
+/api/v1/attacks/events                        for i 1→60 + ATK_TYPE_POOL + SRC_IP_POOL
+                                            实时态势监测中心（参考 §5.2.1）
+                                            必须包含: attack_phase(攻击阶段: 资产发现→漏洞利用→权限维持)
+                                            必须包含: cluster_id(聚类事件ID, 多源数据聚类分析)
 /api/v1/attacks/alerts/stats                  for i 1→8 按 ATK_TYPE_POOL 分组统计 count
+                                            8类威胁告警矩阵（参考 §5.2.2）:
+                                            1-应用漏洞类(SQLi/RCE) 2-暴力破解类(SSH/DB) 3-异常通信类(C2/DNS隧道)
+                                            4-横向移动类(WMI/SMB) 5-数据外泄类(离群流量) 6-恶意代码类(WebShell)
+                                            7-中间件安全类(Nginx/Redis未授权) 8-诱捕告警类(蜜罐触发)
+                                            字段必须包含: alert_category(1-8分类), category_name, count, trend
 /api/v1/attacks/whitelist                     for i 1→15 白名单 IP/CIDR
-/api/v1/attacks/block-policies                for i 1→10 阻断策略（IP黑名单/区域封禁/协议过滤）
-/api/v1/attacks/agents                        for i 1→25 Agent节点（online/offline/unmanaged）
-/api/v1/attacks/honeypots                     for i 1→6 蜜罐（SSH/MySQL/Redis/Web/Git/OA）
-/api/v1/attacks/honeypot-events               for i 1→30 诱捕事件（按 honeypot_id 关联）+ SRC_IP_POOL + ATK_TYPE_POOL
+/api/v1/attacks/block-policies                for i 1→10 阻断策略
+                                            自动化阻断（参考 §5.2.4）
+                                            必须包含: block_type(IP黑名单/区域封禁/协议过滤/TLS指纹拦截)
+                                            必须包含: confidence_score(攻击置信度阈值), is_auto_block(是否自动下发封禁)
+/api/v1/attacks/agents                        for i 1→25 Agent节点
+                                            分布式Agent架构（参考 §5.2.4）
+                                            必须包含: agent_tech(eBPF内核/用户态), heartbeat_status(心跳状态)
+                                            必须包含: version(Agent版本, 用于静默升级管理)
+/api/v1/attacks/honeypots                     for i 1→6 蜜罐
+                                            蜜罐诱捕防御体系（参考 §5.2.3）
+                                            必须包含: honeypot_type(service: SSH/MySQL/Redis / application: Web/Git/OA / file: 文档诱饵)
+                                            必须包含: lure_level(诱饵仿真等级)
+/api/v1/attacks/honeypot-events               for i 1→30 诱捕事件
+                                            必须包含: src_ip(攻击源IP), attack_payload(攻击载荷详情), capture_path(完整攻击路径复现)
 ```
 
 ### 系统管理 (system)
