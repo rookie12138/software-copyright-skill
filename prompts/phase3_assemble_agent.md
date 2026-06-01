@@ -737,7 +737,7 @@ with open(manifest_path, "w", encoding="utf-8") as f:
 | 图片文件缺失/损坏 | `print('[WARN] 图片缺失或损坏: {}'.format(filename))`，跳过该图片 |
 | 非文本文件混入源码目录 | 只读取 `.go`, `.js`, `.html`, `.css`, `.sql` 文件 |
 | 编码错误 | 打开文件时指定 `encoding='utf-8', errors='replace'` |
-| 总代码行数不足 3000 | 全部写入，不报错 |
+| 总代码行数不足 3000 | 全部写入，不报错（注：行数达标判定仅看后端 backend/ 目录，此处 3000 是 60 页文档的最低内容线） |
 | python-docx 未安装 | 自动降级为纯文本输出（`.txt` 文件） |
 
 ---

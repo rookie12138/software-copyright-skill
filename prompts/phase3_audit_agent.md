@@ -11,10 +11,7 @@
 ## 检查项 1：精确行数统计
 
 **逻辑**：
-- 遍历 `backend/` 下所有 `.go` 文件
-- 遍历 `js/` 下所有 `.js` 文件
-- 遍历 `css/` 和 `design-system/` 下所有 `.css` 文件
-- 遍历根目录 `database_schema.sql` 和 `openapi.yaml`
+- **仅统计 `backend/` 下所有 `.go` 文件**（前端代码不参与行数判定）
 - 排除空白行（`line.strip() == ''`）
 - 排除整行注释行——**但必须保留 Docstring**：
 
@@ -37,9 +34,9 @@ def is_docstring_line(line):
 ```
 
 **判定标准**：
-- 有效行数 >= 10000：`[PASS] 代码行数达标: NNNN 行`
-- 有效行数 < 10000：`[FAIL] 代码行数不达标: NNNN 行（差 NNNN 行）`
-- 分别统计 `frontend/`、`backend/`、`SQL+YAML` 三个分区行数
+- 后端有效行数 >= 10000：`[PASS] 后端代码行数达标: NNNN 行`
+- 后端有效行数 < 10000：`[FAIL] 后端代码行数不达标: NNNN 行（差 NNNN 行）`
+- 附带统计 `frontend/` 行数（仅作参考，不参与达标判定）
 
 ---
 
@@ -105,10 +102,9 @@ EXPLANATORY_PATTERNS = [
 ============================================
 
 [检查 1] 有效代码行数统计
-  backend/    : XXXX 行
-  frontend/   : XXXX 行
-  总计        : XXXX 行
-  [PASS] 代码行数达标 / [FAIL] 缺少 XXX 行
+  backend/    : XXXX 行  (达标判定)
+  frontend/   : XXXX 行  (仅供参考)
+  [PASS] 后端代码行数达标 / [FAIL] 缺少 XXX 行
 
 [检查 2] Go 错误处理审计
   [WARN] backend/service/asset_service.go:45 — 裸返回错误
