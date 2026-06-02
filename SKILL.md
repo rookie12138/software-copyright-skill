@@ -4,7 +4,7 @@ description: >
   软著申请全流程自动化技能。四阶段流水线：需求确认 → 前端先行生成（App Shell→View组件→契约提取）
   → 后端代码生成（紧贴openapi.yaml）→ 审查清洗+交付组装。
   支持模块自定义、UI风格选择(ui-ux-pro-max)、去AI化代码生成，
-  最终输出60页源代码文档、操作手册、UI截图集和完整源码包。
+  最终输出纯后端源代码文档(6000+行，全量不截断)、操作手册、UI截图集和完整源码包。
   触发条件：软著申请、软件著作权、申请软著、软著材料准备、copyright application。
 agent_created: true
 ---
@@ -238,23 +238,23 @@ if (handler) {
 
 ---
 
-## Phase 2：后端代码生成（垂直切片三层架构）
+## Phase 2：后端代码生成（垂直切片三层架构 + 底层逻辑下钻）
 
-**目标**：紧贴 `openapi.yaml` 和 `database_schema.sql`，分三个子阶段生成 10000+ 行工业级后端代码。核心策略：**业务纵深模拟**——Service 层禁止简单的 Repository 代理，必须植入高并发聚合、安全领域算法、DTO/VO 严格映射、数据填充引擎四种复杂逻辑。
+**目标**：紧贴 `openapi.yaml` 和 `database_schema.sql`，分三个子阶段生成 6000+ 行工业级后端代码。核心策略：**业务纵深模拟 + 底层逻辑下钻**——四维度强制代码厚度：高并发聚合、安全领域算法、DTO/VO严格映射、数据填充引擎；**企业级通用底座**——JWT鉴权/RSA签名中间件、令牌桶限流器、操作审计中间件；**核心业务算法复杂度**——并发扫描调度器、滑动窗口告警去重/LRU缓存；**GORM高级特性**——正则校验/Hooks/级联事务。
 
 **核心策略**：不再让一个 Agent 一次性输出 2500 行必截断的代码。改为分三次调度，每次只生成一层：
 
 ```
-调度者 → GENERATE_MODELS     → 产出 model/*.go (全部 GORM 结构体)
-调度者 → GENERATE_REPOSITORIES → 产出 repository/*.go (全部 DAO 层)
-调度者 → GENERATE_SERVICES     → 产出 service/*.go + controller/*.go + main.go
+调度者 → GENERATE_MODELS     → 产出 model/*.go (全部 GORM 结构体 + Hooks + 校验器)
+调度者 → GENERATE_REPOSITORIES → 产出 repository/*.go (全部 DAO 层 + 级联事务 + 正则校验)
+调度者 → GENERATE_SERVICES     → 产出 service/*.go + controller/*.go + middleware/*.go + main.go
 ```
 
 | 切片 | 触发指令 | 产出 | 核心要求 |
 |------|---------|------|---------|
-| 2.1 | `GENERATE_MODELS` | `model/*.go` (18个实体) | GORM tags + JSON snake_case tags，与前端 apiFetch Mock 数据字段名一致 |
-| 2.2 | `GENERATE_REPOSITORIES` | `repository/*.go` (18个 DAO) | 分页查询、条件筛选、批量插入(事务)、ErrRecordNotFound 处理 |
-| 2.3 | `GENERATE_SERVICES` | `service/*.go`（含算法层+Seeder）+ `controller/*.go` + `main.go` | 高并发聚合(errgroup)、安全领域算法(CVSS/CIDR/流量基线)、DTO/VO严格映射、数据填充引擎 |
+| 2.1 | `GENERATE_MODELS` | `model/*.go` (18个实体 + hooks.go + validators.go) | GORM tags + JSON snake_case tags，Hooks(BeforeCreate/BeforeUpdate)，正则校验 |
+| 2.2 | `GENERATE_REPOSITORIES` | `repository/*.go` (18个 DAO + errors.go + validators.go) | 分页查询、条件筛选、批量插入(事务)、级联删除(tx.Begin/Rollback)、正则强校验 |
+| 2.3 | `GENERATE_SERVICES` | `service/*.go`（含算法层+Seeder+并发调度器+LRU缓存）+ `controller/*.go` + `middleware/*.go`（JWT/限流/审计）+ `main.go` | 四维度下钻：高并发聚合、安全算法(CVSS/CIDR/流量基线)、并发扫描调度器(Worker Pool)、滑动窗口+LRU、DTO/VO、JWT(RSA签名/刷新)、令牌桶限流、审计Diff |
 
 **去 AI 化**：每层生成时即加载 `references/deai_rules.md` 强制执行。
 
@@ -271,11 +271,13 @@ if (handler) {
 **不再让 LLM 数行号或徒手审代码。改为生成自动化脚本。**
 
 **脚本检查项**：
-1. 精确行数统计（仅统计 `backend/` 下 `.go` 文件，排除空行和解释性注释，**保留 Docstring**——大写字母开头/`@`标签/`/** */` 块注释，判断 >= 10000）
+1. 精确行数统计（仅统计 `backend/` 下 `.go` 文件，排除空行和解释性注释，**保留 Docstring**——大写字母开头/`@`标签/`/** */` 块注释，判断 >= 6000）
 2. Go 代码通用异常捕获扫描（`if err != nil { return err }` 无日志版本，向前看4行检测）
 3. 解释性注释正则扫描（20 个中文动词模式：定义/获取/设置/创建/删除/更新/查询/连接/初始化/遍历/判断/计算/返回/声明/赋值/配置/注册/处理/调用/发送/接收/解析/格式化/实例化/打开/关闭）
 4. 前端 apiFetch Mock 数据充分性检查（算法化生成模式下检测 for 循环 + 种子数组存在性）
 5. 路由联动完整性检查（Router.on 注册 + router.navigate 目标 + window.renderXxx 定义三方交叉验证）
+6. 后端 Middleware 完整性检查（jwt_auth.go / rate_limiter.go / audit_logger.go 存在性 + 关键实现检测）
+7. 后端算法层完整性检查（cvss_calculator.go / subnet_scanner.go / traffic_analyzer.go / data_seeder.go + ProbeAssets / AlertAggregator / LRUCache）
 
 **退出码**：全部 PASS → `sys.exit(0)`，任一 FAIL → `sys.exit(1)`。
 
@@ -288,11 +290,11 @@ if (handler) {
 **不再让 LLM 手工拼接文本排 Word 文档。改为生成自动化打包脚本。**
 
 **脚本功能**：
-1. **`source_code.docx`**：取前 1500 行（前 30 页）+ 后 1500 行（后 30 页），Courier New 9pt，精确 50 行/页。**含去AI化处理**：自动剥离解释性注释、注入工程师口吻的文件头描述（HUMAN_DESCRIPTIONS）和层级描述
+1. **`source_code.docx`**：**纯后端 Go 代码全量输出**，仅收集 `backend/` 目录下 `.go` 文件，不输出前端/SQL/CSS/JS。**不截断不省略**——无"前1500+省略+后1500"逻辑，全量写入。**不插入注释块**——无文件分隔标记、无层级描述、无"文件不存在"标记。Courier New 9pt，精确 50 行/页。含去AI化处理：自动剥离解释性注释、注入工程师口吻的文件头描述（HUMAN_DESCRIPTIONS，仅一行）。最低行数要求 6000 行
 2. **`screenshots.docx`**：遍历 `./screenshots` 目录，每页 1 张图 + 中文描述标题 + 分页符（16 张截图标准映射表）
 3. **`user_manual.docx`**：5 章操作手册（首页/资产测绘/主机检测/网站检测/攻击事件），每章 2-6 个子节，含详细功能描述文案
-4. **`source_code.zip`**：完整源码打包 + 自动生成 README.txt
-5. **`manifest.json`**：构建清单，记录去AI化处理标记和产出物路径
+4. **`source_code.zip`**：完整源码打包（前端+后端+契约文件）+ 自动生成 README.txt
+5. **`manifest.json`**：构建清单，记录去AI化处理标记、产出物路径和 source_code.docx 的内容范围(backend only, full output)
 
 **产物输出到 `output/` 目录。**
 

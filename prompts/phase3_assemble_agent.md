@@ -6,7 +6,7 @@
 ## 前置环境
 
 - Python 3.8+ 环境已安装 `python-docx` 库：`pip install python-docx`
-- 前后端源码位于项目根目录下（`index.html`, `js/`, `css/`, `design-system/`, `backend/`, `database_schema.sql`, `openapi.yaml`）
+- 后端源码位于 `backend/` 目录下（`model/`, `repository/`, `service/`, `controller/`, `middleware/`, `main.go` 等）
 - UI 截图已由浏览器工具保存在 `./screenshots` 目录
 
 ---
@@ -22,15 +22,21 @@ PRODUCT_VERSION = "{从spec.json读取}"  # 默认 "V1.0"
 PRODUCT_SHORT = "{从spec.json读取}"    # 默认 "运营平台"
 
 PAGE_LINES = 50       # 每页行数
-FRONT_PAGES = 30      # 前30页
-BACK_PAGES = 30       # 后30页
-FRONT_LINES = FRONT_PAGES * PAGE_LINES  # 1500
-BACK_LINES = BACK_PAGES * PAGE_LINES    # 1500
+MIN_BACKEND_LINES = 6000  # 后端代码最低行数要求
 ```
 
 ---
 
 ## 模块 1：源代码文档生成 (`source_code.docx`)
+
+### 核心原则
+
+**纯后端代码输出，全量不截断，无注释块。**
+
+- 只输出 `backend/` 目录下的 `.go` 文件，不输出前端代码、CSS、JS、HTML、SQL
+- 不做任何行数截断（没有"前1500+省略+后1500"逻辑），所有代码行全量写入
+- 不插入任何注释块（不插文件分隔标记、不插"文件不存在"注释、不插层级描述注释）
+- 每个文件只插入一行 HUMAN_DESCRIPTIONS 文件头（工程师口吻），然后紧跟源码
 
 ### 1.1 文件读取与去AI化处理
 
@@ -49,9 +55,6 @@ def read_file_lines(filepath):
                     continue
                 # 过滤单行注释（非 Docstring）
                 if stripped.strip().startswith("//") and not is_docstring_line(line):
-                    continue
-                # 过滤 SQL 注释
-                if stripped.strip().startswith("-- "):
                     continue
                 lines.append(stripped)
     except Exception:
@@ -91,141 +94,98 @@ def is_explanatory_comment(line):
 
 ### 1.2 文件头描述注入（HUMAN_DESCRIPTIONS）
 
-在收集源码时，为每个文件插入工程师口吻的模块说明，**替换掉 AI 风格的注释**：
+**只保留后端文件的描述，前端文件不参与 source_code.docx：**
 
 ```python
 HUMAN_DESCRIPTIONS = {
-    "index.html": (
-        "// ============================================================\n"
-        "// 安全运营平台 主入口页面\n"
-        "// 加载顺序: 设计系统 CSS → 公共 JS 库 → 视图组件 → 装饰器 → 应用外壳\n"
-        "// ============================================================"
-    ),
-    "router.js": (
-        "// ============================================================\n"
-        "// 前端路由模块 — 基于 URL Hash 的 SPA 单页路由分发器\n"
-        "// 负责解析 hash 并调度到对应视图组件与装饰器\n"
-        "// ============================================================"
-    ),
-    "app-shell.js": (
-        "// ============================================================\n"
-        "// 应用外壳模块 — 注册业务路由与装饰器映射\n"
-        "// 生成侧边菜单、面包屑、路由导航与设计系统加载\n"
-        "// ============================================================"
-    ),
-    "dashboard.js": (
-        "// ============================================================\n"
-        "// 首页态势大屏 — KPI 指标 + 攻击趋势图 + 风险分布图 + 实时告警表\n"
-        "// 使用 ECharts 渲染折线图和饼图，支持跨路由导航\n"
-        "// ============================================================"
-    ),
-    "asset.js": (
-        "// ============================================================\n"
-        "// 资产中心 — 四个子 Tab: 主机资产 / 网站资产 / 攻击面测绘 / 流量统计\n"
-        "// ============================================================"
-    ),
-    "host-risk.js": (
-        "// ============================================================\n"
-        "// 主机风险管理 — 四个子 Tab: 漏洞台账 / 扫描任务 / 扫描调度 / 配置核查\n"
-        "// ============================================================"
-    ),
-    "web-risk.js": (
-        "// ============================================================\n"
-        "// Web 风险管理 — 四个子 Tab: 网站台账 / 网站漏洞 / 安全监测 / 渗透测试\n"
-        "// ============================================================"
-    ),
-    "attack.js": (
-        "// ============================================================\n"
-        "// 攻击事件中心 — 六个子 Tab: 事件清单 / 攻击统计 / 阻断策略 / 白名单 / 安全 Agent / 蜜罐\n"
-        "// ============================================================"
-    ),
-    "system.js": (
-        "// ============================================================\n"
-        "// 系统管理 — 七个子 Tab: 系统配置 / 在线升级 / 诊断工具 / 探针部署 / 参数管理 / 操作日志 / 联动策略\n"
-        "// ============================================================"
-    ),
-    "main.go": (
-        "// ============================================================\n"
-        "// 后端服务入口 — Gin 框架启动, GORM 数据库连接, DI 依赖注入, CORS 中间件\n"
-        "// ============================================================"
-    ),
-    "database_schema.sql": (
-        "-- ============================================================\n"
-        "-- 数据库建表脚本 — MySQL 8.0, InnoDB 引擎, utf8mb4 字符集\n"
-        "-- 含外键约束与索引\n"
-        "-- ============================================================"
-    ),
+    "main.go": "// 后端服务入口 — Gin 框架启动, GORM 数据库连接, DI 依赖注入, CORS 中间件",
+    # Model 层
+    "host_asset.go": "// 主机资产实体 — GORM 映射 host_assets 表",
+    "web_asset.go": "// 网站资产实体 — GORM 映射 web_assets 表",
+    "vulnerability.go": "// 漏洞实体 — GORM 映射 vulnerabilities 表",
+    "scan_task.go": "// 扫描任务实体 — GORM 映射 scan_tasks 表",
+    "scan_schedule.go": "// 扫描调度实体 — GORM 映射 scan_schedules 表",
+    "config_audit_result.go": "// 配置核查结果实体 — GORM 映射 config_audit_results 表",
+    "web_vulnerability.go": "// Web漏洞实体 — GORM 映射 web_vulnerabilities 表",
+    "web_monitor_status.go": "// 网站监测状态实体 — GORM 映射 web_monitor_status 表",
+    "pentest_task.go": "// 渗透测试任务实体 — GORM 映射 pentest_tasks 表",
+    "alert.go": "// 告警实体 — GORM 映射 alerts 表",
+    "whitelist_entry.go": "// 白名单实体 — GORM 映射 whitelist_entries 表",
+    "block_policy.go": "// 阻断策略实体 — GORM 映射 block_policies 表",
+    "agent.go": "// 安全Agent实体 — GORM 映射 agents 表",
+    "honeypot.go": "// 蜜罐实体 — GORM 映射 honeypots 表",
+    "honeypot_event.go": "// 蜜罐事件实体 — GORM 映射 honeypot_events 表",
+    "system_config.go": "// 系统配置实体 — GORM 映射 system_config 表",
+    "operation_log.go": "// 操作日志实体 — GORM 映射 operation_logs 表",
+    "linkage_policy.go": "// 联动策略实体 — GORM 映射 linkage_policies 表",
+    # Repository 层
+    "errors.go": "// 数据访问层统一错误定义",
+    "host_asset_repo.go": "// 主机资产数据访问 — 分页查询/条件筛选/批量插入",
+    "web_asset_repo.go": "// 网站资产数据访问",
+    "vulnerability_repo.go": "// 漏洞数据访问",
+    "alert_repo.go": "// 告警数据访问",
+    # Service 层
+    "dashboard_service.go": "// 首页聚合服务 — errgroup 四路并发拉取",
+    "asset_service.go": "// 资产管理服务 — 并发扫描调度器",
+    "alert_service.go": "// 告警处理服务 — 滑动窗口去重 + LRU 缓存",
+    "cvss_calculator.go": "// CVSS v3 评分算法 — 基向量权重计算",
+    "subnet_scanner.go": "// CIDR 网段解析算法 — IP 列表生成/掩码计算",
+    "traffic_analyzer.go": "// 流量基线分析算法 — 标准差/异常检测",
+    "data_seeder.go": "// 数据填充引擎 — 预设字典批量插入",
+    # Controller 层
+    "response.go": "// 统一响应格式封装",
+    "dashboard_controller.go": "// 首页控制器",
+    "asset_controller.go": "// 资产中心控制器",
+    # Middleware 层
+    "jwt_auth.go": "// JWT 鉴权中间件 — RSA 签名验证/Token 刷新",
+    "rate_limiter.go": "// 全局限流器 — 令牌桶算法",
+    "audit_logger.go": "// 操作审计中间件 — 请求拦截/Diff 记录",
+    "cors.go": "// CORS 跨域中间件",
 }
-
-def get_module_description(filepath):
-    """根据文件路径自动生成层级描述"""
-    if filepath.startswith("backend/model/"):
-        return "数据模型层 — GORM 实体映射, 对应 MySQL 表结构"
-    if filepath.startswith("backend/repository/"):
-        return "数据访问层 — 封装 GORM 查询, 事务批处理, 动态过滤"
-    if filepath.startswith("backend/service/"):
-        return "业务逻辑层 — 并发查询, 数据聚合, 统计计算"
-    if filepath.startswith("backend/controller/"):
-        return "控制器层 — Gin 路由注册, 请求参数解析, 统一响应封装"
-    if filepath.startswith("js/decorators/"):
-        return "DOM 装饰器 — 非侵入式视觉增强, 表格斑马纹, 状态徽章"
-    if filepath.startswith("css/"):
-        return "样式系统 — CSS 自定义属性, 布局变量, 响应式栅格"
-    if filepath.startswith("design-system/"):
-        return "设计系统 — 色彩矩阵, 玻璃拟态效果, 图表暗黑主题"
-    return None
 ```
 
-**收集逻辑**：
+### 1.3 收集逻辑（纯后端、无注释块）
 
 ```python
 def collect_source_lines():
+    """只收集 backend/ 下的 .go 文件，全量输出，不插注释块"""
     all_lines = []
-    for src_path, display_path in FILE_ORDER:
-        full_path = os.path.join(PROJECT_ROOT, src_path)
-        base_fname = display_path.split("/")[-1]
+    backend_dir = os.path.join(PROJECT_ROOT, "backend")
 
-        # 注入 HUMAN_DESCRIPTIONS 文件头
-        human_desc = HUMAN_DESCRIPTIONS.get(base_fname, "")
-        if human_desc:
-            for desc_line in human_desc.split("\n"):
-                if desc_line.strip():
-                    all_lines.append(desc_line)
+    # 按层级顺序扫描: model → repository → service → controller → middleware → main.go
+    layer_order = ["model", "repository", "service", "controller", "middleware"]
 
-        # 文件分隔标记
-        all_lines.append("// ======== {0} ========".format(display_path))
-
-        if os.path.isfile(full_path):
-            file_lines = read_file_lines(full_path)
-            # 注入层级描述
-            module_desc = get_module_description(display_path)
-            if module_desc:
-                all_lines.append("// {0}".format(module_desc))
+    for layer in layer_order:
+        layer_dir = os.path.join(backend_dir, layer)
+        if not os.path.isdir(layer_dir):
+            continue
+        go_files = sorted([
+            f for f in os.listdir(layer_dir)
+            if f.endswith(".go")
+        ])
+        for fname in go_files:
+            filepath = os.path.join(layer_dir, fname)
+            # 注入 HUMAN_DESCRIPTIONS（一行文件头）
+            desc = HUMAN_DESCRIPTIONS.get(fname, "")
+            if desc:
+                all_lines.append(desc)
+            # 直接追加源码行，不插分隔标记，不插层级描述
+            file_lines = read_file_lines(filepath)
             all_lines.extend(file_lines)
-        else:
-            all_lines.append("// [文件不存在: {0}]".format(src_path))
+
+    # 追加 main.go（根目录）
+    main_path = os.path.join(backend_dir, "main.go")
+    if os.path.isfile(main_path):
+        desc = HUMAN_DESCRIPTIONS.get("main.go", "")
+        if desc:
+            all_lines.append(desc)
+        all_lines.extend(read_file_lines(main_path))
+
+    # 行数预警
+    if len(all_lines) < MIN_BACKEND_LINES:
+        print("[WARN] 后端有效代码行数不足 6000: {0} 行，建议增强底层逻辑下钻".format(len(all_lines)))
 
     return all_lines
-```
-
-### 1.3 60页软著行切割逻辑
-
-```python
-def build_60_page_lines(all_lines):
-    total = len(all_lines)
-    front_needed = FRONT_LINES   # 1500
-    back_needed = BACK_LINES     # 1500
-
-    # 总行数不足 3000 → 全部写入
-    if total <= front_needed + back_needed:
-        return all_lines, 1, total // PAGE_LINES + (1 if total % PAGE_LINES else 0)
-
-    first30 = all_lines[:front_needed]
-    last30 = all_lines[-back_needed:]
-
-    # 中间省略标记（软著允许）
-    separator = ["// ... ... ... 中间省略 {0} 行 ... ... ...".format(total - front_needed - back_needed)]
-    return first30 + separator + last30, front_needed, back_needed
 ```
 
 ### 1.4 Docx 精确排版参数
@@ -255,9 +215,9 @@ for run in header_para.runs:
     run.font.size = Pt(9)
     run.font.name = "SimSun"
 
-# 每页内容：标题 + 页码 + 50行代码
-display_lines, front_count, back_count = build_60_page_lines(all_lines)
-total_pages = len(display_lines) // PAGE_LINES + (1 if len(display_lines) % PAGE_LINES else 0)
+# 全量代码行（不截断、不省略）
+all_lines = collect_source_lines()
+total_pages = len(all_lines) // PAGE_LINES + (1 if len(all_lines) % PAGE_LINES else 0)
 
 for page_num in range(total_pages):
     if page_num > 0:
@@ -282,9 +242,9 @@ for page_num in range(total_pages):
 
     # 代码行（Courier New 9pt，行号4位右对齐）
     start_idx = page_num * PAGE_LINES
-    end_idx = min(start_idx + PAGE_LINES, len(display_lines))
+    end_idx = min(start_idx + PAGE_LINES, len(all_lines))
     for line_num in range(start_idx, end_idx):
-        line_text = display_lines[line_num]
+        line_text = all_lines[line_num]
         p = document.add_paragraph()
         p.paragraph_format.line_spacing = Pt(12)     # 12pt 行距
         p.paragraph_format.space_before = Pt(0)       # 段前间距 0
@@ -314,55 +274,11 @@ document.save(os.path.join(BUILD_DIR, "source_code.docx"))
 | 页眉 | 产品名+版本号，SimSun 9pt 居中 | |
 | 页标题 | SimHei 10pt 加粗居中 | |
 | 页码 | SimSun 8pt 居中 | "第 N 页 / 共 M 页" |
+| 内容来源 | **仅 backend/ 目录 .go 文件** | 不含前端/SQL/CSS/JS |
+| 行数策略 | **全量输出，不截断不省略** | 无"中间省略N行" |
+| 注释块 | **不插入任何注释块** | 无分隔标记/层级描述/缺失标记 |
+| 最低行数 | 6000 行 | 不足时输出 WARN |
 | 纯文本降级 | python-docx 不可用时输出 .txt | |
-
-### 1.5 文件排序（FILE_ORDER）
-
-严格按以下顺序拼接所有源码文件，确保逻辑连贯：
-
-```python
-FILE_ORDER = [
-    # 前端入口
-    ("index.html", "index.html"),
-    # 核心框架
-    ("js/router.js", "js/router.js"),
-    ("js/app-shell.js", "js/app-shell.js"),
-    # 视图组件（按模块顺序）
-    ("js/views/dashboard.js", "js/views/dashboard.js"),
-    ("js/views/asset.js", "js/views/asset.js"),
-    ("js/views/host-risk.js", "js/views/host-risk.js"),
-    ("js/views/web-risk.js", "js/views/web-risk.js"),
-    ("js/views/attack.js", "js/views/attack.js"),
-    ("js/views/system.js", "js/views/system.js"),
-    # 装饰器
-    ("js/decorators/dashboard_decorator.js", "js/decorators/dashboard_decorator.js"),
-    ("js/decorators/asset_decorator.js", "js/decorators/asset_decorator.js"),
-    ("js/decorators/host_risk_decorator.js", "js/decorators/host_risk_decorator.js"),
-    ("js/decorators/web_risk_decorator.js", "js/decorators/web_risk_decorator.js"),
-    ("js/decorators/attack_decorator.js", "js/decorators/attack_decorator.js"),
-    ("js/decorators/system_decorator.js", "js/decorators/system_decorator.js"),
-    # 公共样式
-    ("css/variables.css", "css/variables.css"),
-    ("css/layout.css", "css/layout.css"),
-    # 设计系统
-    ("design-system/colors.css", "design-system/colors.css"),
-    ("design-system/effects.css", "design-system/effects.css"),
-    ("design-system/badges.css", "design-system/badges.css"),
-    ("design-system/layers.css", "design-system/layers.css"),
-    ("design-system/table-advanced.css", "design-system/table-advanced.css"),
-    ("design-system/echarts-dark-theme.js", "design-system/echarts-dark-theme.js"),
-    # 后端（垂直切片顺序：Model → Repository → Service → Controller → Main）
-    # model/*.go — 按 Phase 2 规范的实际实体列表填写
-    # repository/*.go — 与 model 一一对应
-    # service/*.go — 按业务模块聚合
-    # controller/*.go — 按业务模块聚合
-    # ("backend/main.go", "backend/main.go"),
-    # 契约文件
-    ("database_schema.sql", "database_schema.sql"),
-]
-```
-
-**注意**：后端 `.go` 文件的具体列表应根据 Phase 2 实际生成的文件动态填充。脚本应在运行时检测 `backend/` 目录结构，而非硬编码。
 
 ---
 
@@ -674,17 +590,48 @@ import zipfile
 
 with zipfile.ZipFile(os.path.join(BUILD_DIR, "source_package.zip"), "w", zipfile.ZIP_DEFLATED) as zf:
     file_count = 0
-    for src_path, display_path in FILE_ORDER:
-        full_path = os.path.join(PROJECT_ROOT, src_path)
-        if os.path.isfile(full_path):
-            zf.write(full_path, display_path)
+
+    # 前端源码（完整保留在 zip 中，但不进 source_code.docx）
+    frontend_dirs = ["css", "js", "design-system"]
+    for d in frontend_dirs:
+        dir_path = os.path.join(PROJECT_ROOT, d)
+        if os.path.isdir(dir_path):
+            for root, dirs, files in os.walk(dir_path):
+                for fname in files:
+                    fpath = os.path.join(root, fname)
+                    arcname = os.path.relpath(fpath, PROJECT_ROOT)
+                    zf.write(fpath, arcname)
+                    file_count += 1
+
+    # 前端入口
+    index_path = os.path.join(PROJECT_ROOT, "index.html")
+    if os.path.isfile(index_path):
+        zf.write(index_path, "index.html")
+        file_count += 1
+
+    # 后端源码
+    backend_dir = os.path.join(PROJECT_ROOT, "backend")
+    if os.path.isdir(backend_dir):
+        for root, dirs, files in os.walk(backend_dir):
+            for fname in files:
+                if fname.endswith(".go"):
+                    fpath = os.path.join(root, fname)
+                    arcname = os.path.relpath(fpath, PROJECT_ROOT)
+                    zf.write(fpath, arcname)
+                    file_count += 1
+
+    # 契约文件
+    for contract_file in ["database_schema.sql", "openapi.yaml"]:
+        cpath = os.path.join(PROJECT_ROOT, contract_file)
+        if os.path.isfile(cpath):
+            zf.write(cpath, contract_file)
             file_count += 1
 
     # 自动生成 README
     readme = (
         "软件名称: {0}\n".format(PRODUCT_NAME) +
         "版本号: {0}\n".format(PRODUCT_VERSION) +
-        "开发语言: JavaScript (ES5), Go, CSS, SQL\n" +
+        "开发语言: Go (后端), JavaScript (前端), CSS, SQL\n" +
         "源文件数: {0}\n".format(file_count) +
         "生成时间: {0}\n".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")) +
         "技术栈: 前端 HTML5/CSS3/原生 JS SPA + 后端 Go/Gin/GORM + MySQL 8.0\n"
@@ -710,12 +657,18 @@ manifest = {
         "user_manual": "user_manual.docx",
         "source_package": "source_package.zip",
     },
+    "source_code_docx": {
+        "content_scope": "backend Go only",
+        "truncation": "none (full output)",
+        "comment_blocks": "none",
+        "min_lines": MIN_BACKEND_LINES,
+        "actual_lines": len(all_lines),
+    },
     "deai_processing": {
         "explanatory_comments_removed": True,
         "human_descriptions_inserted": True,
         "blank_lines_stripped": True,
         "line_numbers_added": True,
-        "file_ordering": "per_phase3_spec",
     },
 }
 
@@ -732,12 +685,12 @@ with open(manifest_path, "w", encoding="utf-8") as f:
 
 | 场景 | 处理方式 |
 |------|---------|
-| 源码目录不存在 | `print('[WARN] 目录不存在: {}'.format(path))`，跳过 |
+| backend/ 目录不存在 | `print('[ERROR] backend/ 目录不存在，无法生成 source_code.docx')`，跳过该文档 |
 | 截图目录为空 | `print('[WARN] 截图目录为空，跳过 screenshots.docx 生成')` |
 | 图片文件缺失/损坏 | `print('[WARN] 图片缺失或损坏: {}'.format(filename))`，跳过该图片 |
-| 非文本文件混入源码目录 | 只读取 `.go`, `.js`, `.html`, `.css`, `.sql` 文件 |
+| 非文本文件混入源码目录 | 只读取 `.go` 文件 |
 | 编码错误 | 打开文件时指定 `encoding='utf-8', errors='replace'` |
-| 总代码行数不足 3000 | 全部写入，不报错（注：行数达标判定仅看后端 backend/ 目录，此处 3000 是 60 页文档的最低内容线） |
+| 后端代码行数不足 6000 | `print('[WARN] 后端代码行数不足 6000: {} 行'.format(count))`，继续生成但不截断 |
 | python-docx 未安装 | 自动降级为纯文本输出（`.txt` 文件） |
 
 ---

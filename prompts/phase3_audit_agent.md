@@ -34,8 +34,8 @@ def is_docstring_line(line):
 ```
 
 **判定标准**：
-- 后端有效行数 >= 10000：`[PASS] 后端代码行数达标: NNNN 行`
-- 后端有效行数 < 10000：`[FAIL] 后端代码行数不达标: NNNN 行（差 NNNN 行）`
+- 后端有效行数 >= 6000：`[PASS] 后端代码行数达标: NNNN 行`
+- 后端有效行数 < 6000：`[FAIL] 后端代码行数不达标: NNNN 行（差 NNNN 行）`
 - 附带统计 `frontend/` 行数（仅作参考，不参与达标判定）
 
 ---
@@ -88,6 +88,37 @@ EXPLANATORY_PATTERNS = [
 - 检查目标路由 `/xxx` 是否在 `js/views/` 中存在对应的 `window.renderXxx` 函数
 - 模拟首页 → 资产中心 → 主机风险 → 系统管理共 6 条关键路径
 
+### 2e. 后端 Middleware 完整性检查（新增）
+
+**逻辑**：
+- 检查 `backend/middleware/` 目录下是否包含以下三个文件：
+  - `jwt_auth.go`：JWT 鉴权中间件
+  - `rate_limiter.go`：全局限流器
+  - `audit_logger.go`：操作审计中间件
+- 每个文件内使用正则检查是否包含关键实现：
+  - `jwt_auth.go`：包含 `rsa` 和 `Verify` 和 `RefreshToken` 关键字
+  - `rate_limiter.go`：包含 `TokenBucket` 和 `Allow` 和 `sync.Map` 关键字
+  - `audit_logger.go`：包含 `diffJSON` 和 `sanitizeBody` 和 `OperationLog` 关键字
+
+判定：
+- 缺少任一文件 → `[FAIL] 缺少中间件文件: xxx.go`
+- 文件存在但缺少关键实现 → `[WARN] xxx.go 缺少关键实现: [关键字列表]`
+
+### 2f. 后端算法层完整性检查（新增）
+
+**逻辑**：
+- 检查 `backend/service/` 目录下是否包含以下文件：
+  - `cvss_calculator.go`：CVSS 评分算法
+  - `subnet_scanner.go`：CIDR 解析算法
+  - `traffic_analyzer.go`：流量基线分析算法
+  - `data_seeder.go`：数据填充引擎
+- 检查 `AssetService` 是否包含 `ProbeAssets` 方法（并发扫描调度器）
+- 检查 `AlertService` 是否包含 `AlertAggregator` 结构体和 `LRUCache` 实现
+
+判定：
+- 缺少算法文件 → `[FAIL] 缺少算法层文件: xxx.go`
+- 缺少关键方法 → `[WARN] AssetService 缺少 ProbeAssets 并发扫描方法`
+
 ---
 
 ## 输出格式
@@ -102,7 +133,7 @@ EXPLANATORY_PATTERNS = [
 ============================================
 
 [检查 1] 有效代码行数统计
-  backend/    : XXXX 行  (达标判定)
+  backend/    : XXXX 行  (达标判定, 阈值 6000)
   frontend/   : XXXX 行  (仅供参考)
   [PASS] 后端代码行数达标 / [FAIL] 缺少 XXX 行
 
@@ -117,11 +148,20 @@ EXPLANATORY_PATTERNS = [
 [检查 4] 前端算法化数据生成模式
   [PASS] 全部 apiFetch Mock 分支使用 for 循环 + 种子数组
   / [WARN] frontend/js/views/dashboard.js: 发现手写 JSON 数组，违反算法化铁律
-  / [WARN] frontend/js/views/asset.js: for 循环上界过小: 3
 
 [检查 5] 路由联动检查
   [PASS] 全部路由存在对应组件
   / [WARN] router.navigate('/system',...) → window.renderSystem 未定义
+
+[检查 6] 后端 Middleware 完整性
+  [PASS] jwt_auth.go / rate_limiter.go / audit_logger.go 全部存在且包含关键实现
+  / [FAIL] 缺少中间件文件: jwt_auth.go
+  / [WARN] rate_limiter.go 缺少关键实现: TokenBucket
+
+[检查 7] 后端算法层完整性
+  [PASS] 算法层文件 + 并发调度器 + LRU 缓存全部存在
+  / [FAIL] 缺少算法层文件: subnet_scanner.go
+  / [WARN] AssetService 缺少 ProbeAssets 并发扫描方法
 
 ============================================
   最终结论: [PASS] / [FAIL]
@@ -130,7 +170,7 @@ EXPLANATORY_PATTERNS = [
 
 **退出码规范**：
 - 所有检查项全部 PASS → `sys.exit(0)`
-- 任一检查项 FAIL（行数不达标 / 路由缺口） → `sys.exit(1)`
+- 任一检查项 FAIL（行数不达标 / 缺少中间件 / 缺少算法文件 / 路由缺口） → `sys.exit(1)`
 - 仅有 WARN（无 FAIL） → `sys.exit(0)` 但输出声明存在 WARN
 
 ---

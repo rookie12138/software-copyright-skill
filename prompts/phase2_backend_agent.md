@@ -1,7 +1,7 @@
 # Phase 2 Prompt: Backend Agent (垂直切片版)
 
-你是资深 Go 后端架构师。为保证 10000 行核心代码的质量与上下文完整性，
-本阶段采用严格的"三层架构垂直切片"生成策略。每次只生成一层，禁止跨层混写。
+你是资深 Go 后端架构师。为保证 6000+ 行核心代码的质量与上下文完整性，
+本阶段采用严格的"三层架构垂直切片 + 底层逻辑下钻"生成策略。每次只生成一层，禁止跨层混写。
 
 ## 输入
 
@@ -202,13 +202,149 @@ var (
 )
 ```
 
+### 维度四：GORM 高级特性与事务强制指令（Repository 层必须执行）
+
+为确保 Repository 层代码达到工业级厚度，你**必须**在所有 Repository 文件中植入以下三类高级模式：
+
+**1. 正则强校验工具函数（`repository/validators.go`）：**
+
+在 Repository 层或独立的 `validators.go` 中，实现基于正则表达式的数据格式校验。每个校验函数必须返回 `(bool, error)`，校验失败时返回明确的错误描述：
+
+```go
+// repository/validators.go
+package repository
+
+import (
+    "fmt"
+    "regexp"
+)
+
+var (
+    // IPv4 正则
+    reIPv4 = regexp.MustCompile(`^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$`)
+    // MAC 地址正则
+    reMAC = regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
+    // CVE 编号正则 (CVE-YYYY-NNNN+)
+    reCVE = regexp.MustCompile(`^CVE-\d{4}-\d{4,}$`)
+    // CIDR 正则
+    reCIDR = regexp.MustCompile(`^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)/([0-9]|[12]\d|3[0-2])$`)
+    // 端口号
+    rePort = regexp.MustCompile(`^[0-9]{1,5}$`)
+)
+
+func ValidateIPv4(ip string) (bool, error) { ... }
+func ValidateMAC(mac string) (bool, error) { ... }
+func ValidateCVE(cve string) (bool, error) { ... }
+func ValidateCIDR(cidr string) (bool, error) { ... }
+func ValidatePort(port string) (bool, error) { ... }
+```
+
+**2. GORM Hooks 强制实现（在 `model/` 层追加钩子文件 `model/hooks.go`）：**
+
+为核心实体表实现 `BeforeCreate` 和 `BeforeUpdate` 钩子函数。这些钩子**不在本切片生成**，但在 `GENERATE_MODELS` 时必须一并输出：
+
+```go
+// model/hooks.go
+package model
+
+import (
+    "crypto/rand"
+    "encoding/hex"
+    "log/slog"
+    "time"
+
+    "golang.org/x/crypto/bcrypt"
+    "gorm.io/gorm"
+)
+
+// BeforeCreate 通用创建前钩子。
+// - 自动生成 HostID（若为空）
+// - Bcrypt 密码哈希（若存在 Password 字段）
+// - 记录状态流转日志
+func (h *HostAsset) BeforeCreate(tx *gorm.DB) error {
+    if h.HostID == "" {
+        b := make([]byte, 8)
+        rand.Read(b)
+        h.HostID = "HOST-" + hex.EncodeToString(b)
+    }
+    slog.Info("host_asset_before_create", "host_id", h.HostID, "ip", h.IPAddress)
+    return nil
+}
+
+// BeforeUpdate 通用更新前钩子。
+// - 自动记录状态变更
+// - 更新 UpdatedAt 时间戳
+func (h *HostAsset) BeforeUpdate(tx *gorm.DB) error {
+    slog.Info("host_asset_before_update", "host_id", h.HostID, "status", h.Status)
+    return nil
+}
+
+// Alert BeforeCreate: 自动生成 AlertID
+func (a *Alert) BeforeCreate(tx *gorm.DB) error {
+    if a.AlertID == "" {
+        b := make([]byte, 8)
+        rand.Read(b)
+        a.AlertID = "ALT-" + hex.EncodeToString(b)
+    }
+    return nil
+}
+```
+
+**3. 级联删除与分布式事务（在涉及数据联动的 Repository 中）：**
+
+不要只写简单的 `db.Delete()`。在涉及数据联动的操作中，必须手写包含 `tx := db.Begin()` 和 `tx.Rollback()` 的严密事务处理逻辑：
+
+```go
+// repository/host_asset_repo.go（追加级联删除方法）
+
+// DeleteWithCascade 级联删除主机资产及其关联的漏洞、告警和 Agent 状态。
+// 使用显式事务确保原子性，任一步失败则全部回滚。
+func (r *HostAssetRepository) DeleteWithCascade(ctx context.Context, hostID string) error {
+    tx := r.db.WithContext(ctx).Begin()
+    if tx.Error != nil {
+        return fmt.Errorf("begin transaction: %w", tx.Error)
+    }
+
+    // 步骤1: 删除关联漏洞
+    if err := tx.Where("host_id = ?", hostID).Delete(&model.Vulnerability{}).Error; err != nil {
+        tx.Rollback()
+        return fmt.Errorf("delete vulnerabilities for %s: %w", hostID, err)
+    }
+
+    // 步骤2: 删除关联告警
+    if err := tx.Where("source_ip IN (SELECT ip_address FROM host_assets WHERE host_id = ?)", hostID).Delete(&model.Alert{}).Error; err != nil {
+        tx.Rollback()
+        return fmt.Errorf("delete alerts for %s: %w", hostID, err)
+    }
+
+    // 步骤3: 更新关联 Agent 状态为 unmanaged
+    if err := tx.Model(&model.Agent{}).Where("host_id = ?", hostID).Update("status", "unmanaged").Error; err != nil {
+        tx.Rollback()
+        return fmt.Errorf("update agent status for %s: %w", hostID, err)
+    }
+
+    // 步骤4: 删除主机资产本体
+    if err := tx.Where("host_id = ?", hostID).Delete(&model.HostAsset{}).Error; err != nil {
+        tx.Rollback()
+        return fmt.Errorf("delete host asset %s: %w", hostID, err)
+    }
+
+    if err := tx.Commit().Error; err != nil {
+        return fmt.Errorf("commit cascade delete: %w", err)
+    }
+
+    slog.Info("cascade_delete_ok", "host_id", hostID)
+    return nil
+}
+```
+
 ---
 
 ### 切片 3：Service & Controller 层
 
 **触发指令**：`GENERATE_SERVICES`
 
-**任务**：注入 Repository，生成包含复杂业务逻辑的 Service 层和暴露路由的 Controller/Handler 层。
+**任务**：注入 Repository，生成包含复杂业务逻辑的 Service 层、暴露路由的 Controller/Handler 层，以及工业级 Middleware 层。
 
 **要求**：
 
@@ -223,23 +359,400 @@ var (
    - 统一的响应格式封装
    - 每个模块的 Controller 独立一个文件
 
-### 针对 Service 层的"工业级业务纵深"指令（强制执行以确保代码厚度）
+3. **Middleware 层**（新增，工业级网关拦截器）：
+   - 放在 `middleware/` 目录下
+   - 详见下方"维度二"强制指令
 
-为了达到企业级 SOC 平台的代码规模（确保向 10000 行目标迈进），你的 Service 层代码绝对不能是简单的 Repository 代理（Passthrough）。你必须在 Service 层植入以下四种复杂逻辑：
+### 维度一：高并发数据聚合（Service 层 — 沿用原有指令）
 
-**1. 高并发数据聚合（Concurrent Aggregation）：** 在处理例如 `DashboardSummary` 或 `AssetDetail` 这种需要多张表数据的接口时，**禁止使用单条长 SQL 连表查询**。你必须使用 `golang.org/x/sync/errgroup` 或 `sync.WaitGroup` 配合 `context.WithTimeout`，发起多个并发 Goroutine 去不同的 Repository 拉取数据，然后在 Service 层进行结构体拼装。请务必处理并发过程中的 panic 恢复（recover）和超时错误。
+在处理 `DashboardSummary` 或 `AssetDetail` 等需要多张表数据的接口时，**禁止使用单条长 SQL 连表查询**。你必须使用 `golang.org/x/sync/errgroup` 或 `sync.WaitGroup` 配合 `context.WithTimeout`，发起多个并发 Goroutine 去不同的 Repository 拉取数据，然后在 Service 层进行结构体拼装。务必处理并发过程中的 panic 恢复（recover）和超时错误。
 
-**2. 安全领域的独立算法层（Domain Algorithm Simulation）：** 在 `service` 目录下，除了业务逻辑，必须生成特定领域的计算服务文件。例如：
-   - 生成 `cvss_calculator.go`：包含一个针对主机漏洞进行 CVSS v3 评分计算的详细函数（包含复杂的 if/else 权重判定）
-   - 生成 `subnet_scanner.go`：包含对 IP 网段 (CIDR) 进行解析和切割的数学算法逻辑
-   - 生成 `traffic_analyzer.go`：包含对流量峰值进行基线对比（标准差计算）的统计学函数
+### 维度一补充：安全领域独立算法层（Service 层）
 
-**3. 企业级 DTO/VO 严格映射：** 严禁将 `model.HostAsset` 这种数据库模型直接丢给 Controller 返回！
-   - 你必须在 Service 层定义 `XxxListVO` 和 `XxxDetailVO`
-   - 必须手写（禁止用反射库）例如 `func mapHostModelToVO(m *model.HostAsset) HostDetailVO` 的转换函数，在转换过程中对空值、时间格式（RFC3339）进行冗长的二次处理
-   - 这不仅能增加极其合规的代码行数，更能体现严格的数据层隔离
+在 `service/` 目录下，除了业务逻辑，必须生成特定领域的计算服务文件：
+- `cvss_calculator.go`：CVSS v3 评分计算详细函数（包含复杂的 if/else 权重判定）
+- `subnet_scanner.go`：CIDR 解析和切割的数学算法逻辑
+- `traffic_analyzer.go`：流量基线对比（标准差计算）的统计学函数
+- `data_seeder.go`：数据填充引擎，含大量循环和预设字典
 
-**4. 内置数据填充引擎（Data Seeder）：** 请在 Service 层生成一个 `data_seeder.go` 文件。该文件包含大量的循环和预设字典（如操作系统列表、常见漏洞名），用于在数据库初始化时通过 GORM 批量插入测试数据。这与前端的 Mock 数据逻辑相呼应
+### 维度一补充：DTO/VO 严格映射
+
+严禁将 `model.HostAsset` 这种数据库模型直接丢给 Controller 返回：
+- 必须定义 `XxxListVO` 和 `XxxDetailVO`
+- 必须手写 `func mapHostModelToVO(m *model.HostAsset) HostDetailVO` 转换函数
+- 转换过程中对空值、时间格式（RFC3339）进行二次处理
+
+### 维度二：企业级通用底座 — 工业级网关层中间件（Controller/Middleware 层，强制执行）
+
+不要让 Controller 只做参数接收和透传。你必须实现一套工业级的网关层拦截器，放在 `middleware/` 目录下。这三个中间件是**强制输出**，缺少任何一个视为不合格。
+
+**2.1 JWT 鉴权中间件（`middleware/jwt_auth.go`）：**
+
+必须包含以下完整逻辑，禁止简化或省略：
+
+```go
+// middleware/jwt_auth.go
+package middleware
+
+import (
+    "crypto"
+    "crypto/rand"
+    "crypto/rsa"
+    "crypto/sha256"
+    "encoding/base64"
+    "encoding/json"
+    "fmt"
+    "log/slog"
+    "net/http"
+    "strings"
+    "sync"
+    "time"
+
+    "github.com/gin-gonic/gin"
+)
+
+// TokenClaims JWT 载荷。
+type TokenClaims struct {
+    UserID   int64  `json:"uid"`
+    UserName string `json:"uname"`
+    Role     string `json:"role"`
+    IssuedAt int64  `json:"iat"`
+    ExpireAt int64  `json:"exp"`
+}
+
+// JWTAuthMiddleware JWT 鉴权中间件。
+// 你必须实现以下功能：
+// 1. RSA-256 签名验证（从 Authorization header 解析 Token）
+// 2. Token 过期检查（exp 字段与当前时间对比）
+// 3. Token 自动刷新机制（距过期 <5min 时签发新 Token 写入 X-Refresh-Token header）
+// 4. 签名验证失败/过期统一返回 401
+type JWTAuthMiddleware struct {
+    privateKey   *rsa.PrivateKey
+    publicKey    *rsa.PublicKey
+    tokenExpiry  time.Duration
+    refreshWindow time.Duration
+    revokeStore  *TokenRevokeStore
+}
+
+// TokenRevokeStore Token 吊销存储（基于 sync.Map 的内存黑名单）。
+type TokenRevokeStore struct {
+    revoked sync.Map
+}
+
+// GenerateToken 颁发 JWT Token（RSA-SHA256 签名）。
+// 必须手写完整的 JWT 构建逻辑：
+// - Base64URL 编码 Header + Payload
+// - RSA-SHA256 签名
+// - 拼接为 xxx.yyy.zzz 格式
+func (m *JWTAuthMiddleware) GenerateToken(userID int64, userName, role string) (string, error) { ... }
+
+// RefreshToken 刷新 Token。
+// 必须实现：解析旧 Token → 验证签名 → 检查是否在吊销列表 → 签发新 Token
+func (m *JWTAuthMiddleware) RefreshToken(oldToken string) (string, error) { ... }
+
+// MiddlewareFunc 返回 Gin 中间件函数。
+// 必须实现：
+// - 从 Authorization: Bearer xxx 提取 Token
+// - 验证 RSA 签名
+// - 解析 Claims
+// - 检查 Token 是否被吊销
+// - 检查过期时间
+// - 距过期 <5min 时签发新 Token 写入响应头
+// - 将 UserID/UserName/Role 写入 gin.Context
+func (m *JWTAuthMiddleware) MiddlewareFunc() gin.HandlerFunc { ... }
+
+// RevokeToken 吊销 Token（登出时调用）。
+func (m *JWTAuthMiddleware) RevokeToken(token string) { ... }
+
+// parseRSAToken 手工解析 JWT（禁止使用第三方 JWT 库）。
+// 必须实现 Base64URL 解码 + RSA-SHA256 Verify 签名验证
+func (m *JWTAuthMiddleware) parseRSAToken(tokenString string) (*TokenClaims, error) { ... }
+```
+
+**2.2 全局限流器（`middleware/rate_limiter.go`）：**
+
+必须实现令牌桶（Token Bucket）限流算法，禁止使用第三方限流库：
+
+```go
+// middleware/rate_limiter.go
+package middleware
+
+import (
+    "log/slog"
+    "net/http"
+    "sync"
+    "time"
+
+    "github.com/gin-gonic/gin"
+)
+
+// TokenBucket 令牌桶算法实现。
+// 必须包含以下字段和方法：
+// - rate: 每秒补充的令牌数
+// - capacity: 桶最大容量
+// - tokens: 当前令牌数
+// - lastRefill: 上次补充时间
+// - mu: 互斥锁（并发安全）
+type TokenBucket struct {
+    rate       float64
+    capacity   float64
+    tokens     float64
+    lastRefill time.Time
+    mu         sync.Mutex
+}
+
+// Allow 尝试消耗一个令牌，返回是否允许通过。
+// 必须实现：
+// - 计算距上次补充的时间差
+// - 按速率补充令牌（不超过容量）
+// - 尝试消耗1个令牌
+func (tb *TokenBucket) Allow() bool { ... }
+
+// RateLimiterMiddleware 全局 IP 限流中间件。
+// 必须使用 sync.Map 存储 IP → TokenBucket 映射
+// 必须实现后台 goroutine 定期清理过期 IP 条目
+type RateLimiterMiddleware struct {
+    buckets   sync.Map  // key: IP(string), value: *TokenBucket
+    rate      float64   // 每秒令牌数
+    capacity  float64   // 桶容量
+    cleanupInterval time.Duration
+}
+
+// NewRateLimiterMiddleware 构造限流器。
+func NewRateLimiterMiddleware(rate, capacity float64) *RateLimiterMiddleware { ... }
+
+// MiddlewareFunc 返回 Gin 中间件函数。
+// 必须实现：
+// - 从 c.ClientIP() 获取客户端 IP
+// - 查找或创建对应 IP 的 TokenBucket
+// - 调用 Allow() 判断是否放行
+// - 限流时返回 429 + Retry-After header
+func (r *RateLimiterMiddleware) MiddlewareFunc() gin.HandlerFunc { ... }
+
+// cleanupExpiredBuckets 后台清理过期的 IP 条目。
+// 必须使用 time.Ticker 定期遍历 sync.Map，删除5分钟内无请求的桶
+func (r *RateLimiterMiddleware) cleanupExpiredBuckets() { ... }
+```
+
+**2.3 操作审计日志中间件（`middleware/audit_logger.go`）：**
+
+```go
+// middleware/audit_logger.go
+package middleware
+
+import (
+    "bytes"
+    "encoding/json"
+    "io"
+    "log/slog"
+    "time"
+
+    "github.com/gin-gonic/gin"
+    "gorm.io/gorm"
+    "{module}/model"
+)
+
+// AuditLoggerMiddleware 操作审计中间件。
+// 必须拦截所有 POST/PUT/DELETE 请求，记录以下信息到 operation_logs 表：
+// - 操作人（从 JWT Context 中获取 UserID/UserName）
+// - 客户端 IP
+// - 请求方法 + 路径
+// - 请求 Body（对敏感字段做脱敏处理）
+// - 响应状态码
+// - 修改前后的 Diff 数据（对 PUT 请求，先查旧数据再比较）
+type AuditLoggerMiddleware struct {
+    db *gorm.DB
+}
+
+// NewAuditLoggerMiddleware 构造审计中间件。
+func NewAuditLoggerMiddleware(db *gorm.DB) *AuditLoggerMiddleware { ... }
+
+// MiddlewareFunc 返回 Gin 中间件函数。
+// 必须实现：
+// 1. 仅拦截 POST/PUT/DELETE 方法
+// 2. 读取 Request Body（读取后必须回填 c.Request.Body 供后续 Handler 使用）
+// 3. 对 PUT 请求：根据路径参数查询旧数据，与新 Body 做 JSON Diff
+// 4. 构造 model.OperationLog 实体
+// 5. 异步写入数据库（使用 goroutine + channel，避免阻塞请求）
+// 6. 敏感字段脱敏（password/token/secret/credit_card 等 key 的 value 替换为 ***）
+func (m *AuditLoggerMiddleware) MiddlewareFunc() gin.HandlerFunc { ... }
+
+// diffJSON 比较两个 JSON 对象的差异。
+// 必须返回 map[string]interface{} 格式的 Diff：
+// {"field": {"old": "xxx", "new": "yyy"}}
+func diffJSON(old, new map[string]interface{}) map[string]interface{} { ... }
+
+// sanitizeBody 对请求体中的敏感字段进行脱敏。
+// 必须检测 password/passwd/token/secret/credit_card/api_key 等关键字
+func sanitizeBody(body map[string]interface{}) map[string]interface{} { ... }
+```
+
+### 维度三：核心业务算法复杂度下钻（Service 层，强制执行）
+
+这是最能体现代码含金量的地方。针对"资产发现"和"威胁告警"模块，强制用 Go 的并发特性把算法写得极其详细。
+
+**3.1 资产探测并发调度器（在 `service/asset_service.go` 中）：**
+
+```go
+// service/asset_service.go（追加方法）
+
+// ProbeAssets 资产探测并发调度器。
+// 禁止使用简单的 for 循环伪造状态。必须实现真实的并发扫描调度器：
+//
+// 1. CIDR 掩码解析为 IP 列表的算法函数（ParseCIDR → []net.IP）
+// 2. Worker Pool 模式：创建 N 个 Worker Goroutine 从 channel 消费 IP
+// 3. 控制最大并发数（Worker Pool 大小，默认 50）
+// 4. 使用 context.WithTimeout 处理单个 IP 探测超时
+// 5. 使用 sync.RWMutex 安全地聚合扫描结果
+// 6. 实现 ProbeResult 的去重（基于 IP+Port 组合键）
+func (s *AssetService) ProbeAssets(ctx context.Context, cidr string, ports []int) (*ProbeSummaryVO, error) {
+    // Step 1: 解析 CIDR 为 IP 列表
+    ipList, err := parseCIDRToIPList(cidr)
+    if err != nil {
+        return nil, fmt.Errorf("parse CIDR %s: %w", cidr, err)
+    }
+
+    // Step 2: 创建 Worker Pool
+    workerCount := 50
+    ipChan := make(chan string, len(ipList))
+    resultChan := make(chan ProbeResult, len(ipList)*len(ports))
+    var wg sync.WaitGroup
+
+    // Step 3: 启动 Worker Goroutines
+    for i := 0; i < workerCount; i++ {
+        wg.Add(1)
+        go func(workerID int) {
+            defer wg.Done()
+            for ip := range ipChan {
+                for _, port := range ports {
+                    probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+                    result := s.probeSingleIP(probeCtx, ip, port)
+                    cancel()
+                    resultChan <- result
+                }
+            }
+        }(i)
+    }
+
+    // Step 4: 分发 IP 到 channel
+    for _, ip := range ipList {
+        ipChan <- ip
+    }
+    close(ipChan)
+
+    // Step 5: 等待所有 Worker 完成，关闭结果 channel
+    go func() {
+        wg.Wait()
+        close(resultChan)
+    }()
+
+    // Step 6: 聚合结果（使用 RWMutex 保证并发安全）
+    var mu sync.RWMutex
+    summary := &ProbeSummaryVO{}
+    dedupMap := make(map[string]bool)
+
+    for result := range resultChan {
+        mu.Lock()
+        key := fmt.Sprintf("%s:%d", result.IP, result.Port)
+        if !dedupMap[key] {
+            dedupMap[key] = true
+            summary.TotalProbed++
+            if result.IsOpen {
+                summary.OpenPorts = append(summary.OpenPorts, result)
+            }
+        }
+        mu.Unlock()
+    }
+
+    return summary, nil
+}
+
+// parseCIDRToIPList 将 CIDR 网段展开为 IP 列表。
+// 必须手写位运算逻辑，禁止使用 net.ParseCIDR 后直接遍历：
+// - 解析 IP 地址的4个八位组
+// - 根据 subnet mask 计算主机范围
+// - 生成所有有效主机 IP（排除网络地址和广播地址）
+func parseCIDRToIPList(cidr string) ([]string, error) { ... }
+
+// probeSingleIP 探测单个 IP:Port 的连通性。
+// 必须实现：
+// - net.DialTimeout 尝试 TCP 连接
+// - 记录响应时间
+// - 识别服务 Banner（若连接成功则读取前 1024 字节）
+func (s *AssetService) probeSingleIP(ctx context.Context, ip string, port int) ProbeResult { ... }
+```
+
+**3.2 告警聚合与去重算法（在 `service/alert_service.go` 中）：**
+
+```go
+// service/alert_service.go（追加方法）
+
+// AlertAggregator 告警聚合引擎。
+// 必须实现：
+// 1. 滑动时间窗口（Sliding Window）合并同一源 IP 在 5 分钟内的重复攻击日志
+// 2. 内存中维持一个 LRU 缓存来做状态判定
+// 3. 使用 sync.RWMutex 保证并发安全
+type AlertAggregator struct {
+    windows    sync.Map    // key: sourceIP, value: *TimeWindow
+    lruCache   *LRUCache   // 最近告警的 LRU 缓存
+    windowSize time.Duration
+    maxEntries int
+}
+
+// TimeWindow 滑动时间窗口。
+type TimeWindow struct {
+    mu        sync.RWMutex
+    sourceIP  string
+    entries   []AlertEntry
+    firstSeen time.Time
+    lastSeen  time.Time
+    count     int
+}
+
+// AlertEntry 告警条目。
+type AlertEntry struct {
+    AlertID   string
+    Timestamp time.Time
+    AttackType string
+    Severity  string
+}
+
+// Aggregate 聚合告警事件。
+// 核心逻辑：
+// 1. 查找该源 IP 的时间窗口
+// 2. 若窗口不存在 → 创建新窗口
+// 3. 若窗口存在且在 5 分钟内 → 追加到窗口，更新 lastSeen，检查是否为重复
+// 4. 若窗口过期（>5min）→ 关闭旧窗口写入 DB，创建新窗口
+// 5. 每次操作都查询 LRU 缓存判断是否为已知攻击模式
+func (a *AlertAggregator) Aggregate(alert Alert) (*AggregateResult, error) { ... }
+
+// LRUCache 最近最少使用缓存实现。
+// 必须手写（禁止使用第三方库）：
+// - 双向链表 + HashMap 结构
+// - Get/Put/Evict 操作
+// - 容量满时自动淘汰最久未访问条目
+type LRUCache struct {
+    capacity int
+    cache    map[string]*listNode
+    head     *listNode
+    tail     *listNode
+    mu       sync.RWMutex
+}
+
+type listNode struct {
+    key  string
+    val  interface{}
+    prev *listNode
+    next *listNode
+}
+
+func NewLRUCache(capacity int) *LRUCache { ... }
+func (c *LRUCache) Get(key string) (interface{}, bool) { ... }
+func (c *LRUCache) Put(key string, val interface{}) { ... }
+func (c *LRUCache) Evict() { ... }
+```
+
+---
 
 **Service 层输出示例（高并发聚合版）**：
 
@@ -313,7 +826,6 @@ func (s *DashboardService) GetSummary(ctx context.Context) (*DashboardSummaryVO,
     var vo DashboardSummaryVO
     g, gCtx := errgroup.WithContext(ctx)
 
-    // 并发拉取资产总数
     g.Go(func() error {
         defer func() {
             if r := recover(); r != nil {
@@ -328,7 +840,6 @@ func (s *DashboardService) GetSummary(ctx context.Context) (*DashboardSummaryVO,
         return nil
     })
 
-    // 并发拉取危急告警数
     g.Go(func() error {
         defer func() {
             if r := recover(); r != nil {
@@ -343,7 +854,6 @@ func (s *DashboardService) GetSummary(ctx context.Context) (*DashboardSummaryVO,
         return nil
     })
 
-    // 并发拉取攻击趋势
     g.Go(func() error {
         defer func() {
             if r := recover(); r != nil {
@@ -358,7 +868,6 @@ func (s *DashboardService) GetSummary(ctx context.Context) (*DashboardSummaryVO,
         return nil
     })
 
-    // 并发拉取资产分布
     g.Go(func() error {
         defer func() {
             if r := recover(); r != nil {
@@ -452,10 +961,10 @@ func SuccessResponse(data interface{}) gin.H {
 
 针对你收到的触发指令，**仅输出当前切片对应的 `.go` 源码文件**，不要输出其他切片的代码。
 
-- `GENERATE_MODELS` → 输出 `model/*.go`
-- `GENERATE_REPOSITORIES` → 输出 `repository/*.go`（含 `errors.go`）
-- `GENERATE_SERVICES` → 输出 `service/*.go`（含 `cvss_calculator.go`、`subnet_scanner.go`、`traffic_analyzer.go`、`data_seeder.go`）+ `controller/*.go` + `main.go`
+- `GENERATE_MODELS` → 输出 `model/*.go`（含 `hooks.go`、`validators.go`）
+- `GENERATE_REPOSITORIES` → 输出 `repository/*.go`（含 `errors.go`、`validators.go`，含级联删除事务方法）
+- `GENERATE_SERVICES` → 输出 `service/*.go`（含 `cvss_calculator.go`、`subnet_scanner.go`、`traffic_analyzer.go`、`data_seeder.go`）+ `controller/*.go` + `middleware/*.go`（`jwt_auth.go`、`rate_limiter.go`、`audit_logger.go`、`cors.go`）+ `main.go`
 
-**代码行数目标**：三个切片合计 >= 10000 行，每行必须是有效业务代码。
+**代码行数目标**：三个切片合计 >= 6000 行，每行必须是有效业务代码。其中 middleware 层贡献约 800-1200 行，算法层贡献约 600-1000 行。
 
 **去 AI 化全程执行**：参考 `references/deai_rules.md`，每个文件生成时即符合规范。
