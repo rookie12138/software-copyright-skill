@@ -146,6 +146,8 @@ Phase 0 ────────→ Phase 1 ────────────
 6. **异构视图（破除唯表格论）**：攻击溯源数据必须用 Timeline 时间线视图，报文/Payload 必须用 Terminal 终端模拟器视图，Dashboard 核心数字必须用极大字体+tabular-nums
 7. **高阶图表**：风险画像/攻击面必须用雷达图（Radar），资产链路/攻击拓扑必须用力导向关系图（Force-Directed Graph）
 8. **骨架屏平滑切场**：不要在渲染开始前清空容器，等所有 `await apiFetch()` 完成后再用 `container.innerHTML = html` 整体替换骨架屏
+9. **Schema-First 两步生成法**：写任何 JS 代码前，必须先从 `references/page_*.md` 和接口清单提取 Schema 注释块（含必含字段、表格列头、KPI 指标、图表类型），再按 Schema 生成代码。`items.push({})` 字段必须从 Schema 的"必含字段"行逐字复制
+10. **反模板劫持铁律**：`view_component_template.js` 仅提供代码骨架，其中的列名/字段名/指标名不具业务权威性。参考文档胜出，模板让路
 
 **路由跳转联动规则（增强截图连贯性）：**
 

@@ -9,6 +9,7 @@
 3. **强制双模数据解耦（核心契约）**：严禁直接在 HTML 字符串中写死业务数据。**必须**在 IIFE 内部定义 `async function apiFetch(url, options)`（双模：USE_MOCK=true 时返回本地 Mock 数据，false 时发起真实 HTTP 请求），所有渲染函数通过它获取数据。**apiFetch 必须是 IIFE 闭包内的私有函数，禁止暴露为全局变量**——否则多文件加载时全局 apiFetch 会被覆盖，导致非当前模块的接口全部报错。
 4. **禁止写解释性注释**。如 `// 定义变量`、`// 渲染表格`、`// 绑定事件`。
 5. **只暴露一个异步函数签名**：`window.renderXxx = async function(container, params)`。整个文件用 IIFE 包裹，apiFetch 定义在 IIFE 内部。
+6. **反模板劫持铁律**：`view_component_template.js` 仅提供代码**骨架结构**，其中出现的 `<th>` 列名、`items.push({})` 中的字段名、统计卡片的指标名均不具业务权威性。一切业务字段以 `references/page_*.md` 和"模块专属 apiFetch 接口清单"为**唯一权威**。当模板示例与参考文档冲突时，参考文档胜出，模板必须让路。违反此条等同于业务字段丢失，打回重做。
 
 ## 输入
 
@@ -40,6 +41,45 @@
 3. **表格列字段**必须涵盖参考文档描述的元数据（如攻击事件必须含"源 IP + 攻击载荷/类型 + 处置状态"）
 4. **图表类型**必须与参考文档描述的呈现方式匹配（如"风险等级分布图"= 饼图/环形图，"流量攻击趋势图"= 折线/面积图）
 5. **特殊业务概念**必须体现在数据结构中（如攻击面的"暴露风险指数 ESI"、网站资产的"影子资产"标记、主机风险的"MAC/UUID 资产对齐"）
+
+---
+
+## Schema-First 两步生成法（强制遵守）
+
+**在写任何一行 JS 代码之前，你必须先完成 Schema Extraction。这不仅是建议，是铁律。**
+
+### 为什么必须 Schema-First
+
+LLM 生成代码时，具体代码片段的注意力权重远高于自然语言指令。如果在写 `items.push({})` 时，注意力窗口里没有正确的字段清单，LLM 会直接抄模板里的字段（如 `host_id, ip_address, os_name`），从而丢失接口清单中要求的 `mac_address, agent_status` 等关键字段。
+
+Schema Extraction 的作用：**先把正确的字段清单"提交"到注意力窗口**，后续写代码时字段名已在上下文中，不会再被模板劫持。
+
+### Step 1：Schema Extraction（先画骨架）
+
+阅读本模块对应的 `references/page_*.md` 和"模块专属 apiFetch 接口清单"，然后**必须输出以下格式的注释块**：
+
+```javascript
+// ═══ SCHEMA: 从 page_{模块}.md 提取 ═══
+// 接口: /api/v1/assets/hosts
+// 必含字段: host_id, host_name, ip_address, mac_address, agent_status, os_name, os_version, cve_id, cvss_score, status
+// 表格列头: 主机名称 | IP地址 | MAC地址 | Agent状态 | 操作系统 | CVE编号 | CVSS评分 | 状态 | 操作
+// KPI指标: 受控主机资产数 | 高危风险资产数 | 在线Agent数 | 离线预警数
+// 图表: 攻击面雷达图(Radar) | 流量风险面积图(Area)
+// ═══ END SCHEMA ═══
+```
+
+**每个接口都要提取一段 Schema。** 如果模块有 5 个接口，就输出 5 段 Schema。
+
+### Step 2：Code Generation（再填血肉）
+
+Schema 全部输出后，按现有规则生成完整 JS 代码。此时 LLM 的注意力窗口里已经有了正确的字段清单：
+
+- `items.push({})` 中的字段**必须从 Schema 的"必含字段"行逐字复制**，一个都不能少
+- `<th>` 列名**必须从 Schema 的"表格列头"行逐字复制**
+- KPI 卡片的 `stat-card__label` **必须从 Schema 的"KPI指标"行逐字复制**
+- 图表类型**必须从 Schema 的"图表"行匹配**
+
+**自检规则**：代码写完后，逐个接口对比 Schema 的"必含字段"行和 `items.push({})` 中的实际字段，如果少了任何一个"必须包含"字段，补上再提交。
 
 ---
 
@@ -106,104 +146,95 @@
         var SRC_IP_POOL   = ['104.18.2.145', '45.122.1.22', '185.199.110.153', '103.235.46.39', '114.114.114.114', '202.112.23.161', '91.121.87.10', '218.92.0.212'];
 
     // ═══════════════════════════════════════════════════════
-    // 接口 1：动态生成 45 条高危主机资产
+    // 接口 1：示例结构 — 字段列表必须从 Schema Extraction 输出复制
+    // 以下 _id / _label 仅为结构占位，不代表实际业务字段
     // ═══════════════════════════════════════════════════════
-    if (url.includes('/api/v1/assets/hosts/high-risk') || url.includes('/api/v1/assets/hosts')) {
-        var hostsItems = [];
+    if (url.includes('{接口路径}')) {
+        var items = [];
         for (var i = 1; i <= 45; i++) {
-            var role = ROLE_POOL[i % ROLE_POOL.length];
-            var os = OS_POOL[i % OS_POOL.length];
-            var cve = CVE_POOL[i % CVE_POOL.length];
-            var cvss = (9.9 - (i % 5) * 1.4 + (i % 3) * 0.3).toFixed(1); // 9.9, 8.8, 7.7, 6.3, 5.2 ...
-            if (parseFloat(cvss) > 10) { cvss = '9.8'; }
-            
-            hostsItems.push({
-                host_id: 'HST-2026-' + (1000 + i),
-                host_name: 'PROD-' + role + '-' + (i < 10 ? '0' + i : i),
-                ip_address: '172.20.18.' + (100 + i),
-                os_name: os,
-                os_version: '',
-                cve_id: cve,
-                cvss_score: parseFloat(cvss),
-                vuln_name: cve.replace('CVE-', 'Vuln-'),
-                discovered_at: '2026-05-' + (10 + (i % 21)) + 'T' + (8 + (i % 12)) + ':' + (i % 60) + ':00Z',
-                status: i % 5 === 0 ? 'in_progress' : (i % 9 === 0 ? 'fixed' : 'open')
+            var poolVal = SOME_POOL[i % SOME_POOL.length];
+            var numVal = parseFloat((9.9 - (i % 5) * 1.4 + (i % 3) * 0.3).toFixed(1));
+            if (numVal > 10) { numVal = 9.8; }
+            items.push({
+                _id: 'PREFIX-' + (1000 + i),
+                _label: 'PROD-' + poolVal + '-' + (i < 10 ? '0' + i : i),
+                _num: numVal
+                // ⚠ 按 Schema Extraction 输出补全所有"必含字段"，严禁遗漏
             });
         }
-
         var page = parseInt((options.params || {}).page || 1);
         var pageSize = parseInt((options.params || {}).page_size || 10);
         var start = (page - 1) * pageSize;
         return {
             code: 0,
-            data: { total: hostsItems.length, page: page, page_size: pageSize, items: hostsItems.slice(start, start + pageSize) }
+            data: { total: items.length, page: page, page_size: pageSize, items: items.slice(start, start + pageSize) }
         };
     }
 
     // ═══════════════════════════════════════════════════════
-    // 接口 2：动态生成 30 天攻击趋势时序（正弦波 + 随机噪点）
+    // 接口 2：时序数据生成结构（正弦波 + 随机噪点）
+    // 字段名从 Schema Extraction 输出复制
     // ═══════════════════════════════════════════════════════
-    if (url.includes('/api/v1/dashboard/attack-trend')) {
+    if (url.includes('{时序接口路径}')) {
         var points = [];
-        var baseInbound = 1200, baseOutbound = 400;
+        var baseA = 1200, baseB = 400;
         for (var day = 1; day <= 30; day++) {
             var wave1 = Math.sin(day / 3.5) * 350;
             var wave2 = Math.cos(day / 4.2) * 180;
             var noise = Math.floor(Math.random() * 250);
             points.push({
                 date: '05-' + (day < 10 ? '0' + day : day),
-                inbound: Math.floor(baseInbound + wave1 + noise),
-                outbound: Math.floor(baseOutbound + wave2 + noise / 2)
+                value_a: Math.floor(baseA + wave1 + noise),
+                value_b: Math.floor(baseB + wave2 + noise / 2)
             });
         }
         return { code: 0, data: { points: points } };
     }
 
     // ═══════════════════════════════════════════════════════
-    // 接口 3：动态生成 60 条实时告警
+    // 接口 3：列表数据生成结构
+    // 字段名从 Schema Extraction 输出复制
     // ═══════════════════════════════════════════════════════
-    if (url.includes('/api/v1/alerts')) {
-        var alerts = [];
+    if (url.includes('{列表接口路径}')) {
+        var entries = [];
         for (var k = 1; k <= 60; k++) {
-            var atkType = ATK_TYPE_POOL[k % ATK_TYPE_POOL.length];
-            var srcIp = SRC_IP_POOL[k % SRC_IP_POOL.length];
-            alerts.push({
-                alert_id: 'ALT-' + (80000 + k),
-                timestamp: '2026-06-01 ' + (8 + (k % 14)) + ':' + ((k * 7) % 60 < 10 ? '0' : '') + ((k * 7) % 60) + ':' + (k % 60 < 10 ? '0' : '') + (k % 60),
-                src_ip: srcIp,
-                dst_ip: '172.20.19.' + (10 + (k % 45)),
-                attack_type: atkType,
-                level: k % 7 === 0 ? 'critical' : (k % 3 === 0 ? 'high' : (k % 4 === 0 ? 'low' : 'medium')),
-                status: k % 4 === 0 ? 'blocked' : (k % 4 === 1 ? 'isolated' : (k % 4 === 2 ? 'intercepting' : 'passed'))
-                // 处置状态必须包含4种: intercepted(拦截中) / blocked(已阻断) / passed(已放行) / isolated(已隔离)
-                // 参考 page_dashboard.md §1.2.3
+            entries.push({
+                _id: 'PREFIX-' + (80000 + k),
+                _ts: '2026-06-01 ' + (8 + (k % 14)) + ':' + ((k * 7) % 60 < 10 ? '0' : '') + ((k * 7) % 60),
+                _type: SOME_POOL[k % SOME_POOL.length],
+                _level: k % 7 === 0 ? 'critical' : (k % 3 === 0 ? 'high' : 'medium'),
+                _status: k % 4 === 0 ? 'blocked' : 'passed'
+                // ⚠ 按 Schema Extraction 输出补全所有"必含字段"
             });
         }
-        return { code: 0, data: { total: alerts.length, items: alerts } };
+        return { code: 0, data: { total: entries.length, items: entries } };
     }
 
     // ═══════════════════════════════════════════════════════
-    // 接口 4：首页态势汇总（聚合计算，非写死）
+    // 接口 4：聚合值接口结构（KPI数值，非写死）
+    // 字段名从 Schema Extraction 输出复制
     // ═══════════════════════════════════════════════════════
-    if (url.includes('/api/v1/dashboard/summary')) {
+    if (url.includes('{汇总接口路径}')) {
         return {
             code: 0,
             data: {
-                total_assets: 12847,
-                critical_risks: 326,
-                alerts_24h: 1892,
-                protection_coverage: 94.7
+                metric_a: 12847,
+                metric_b: 326,
+                metric_c: 1892
+                // ⚠ KPI 字段名必须与 Schema "KPI指标"行一致
             }
         };
     }
 
     // ═══════════════════════════════════════════════════════
-    // 接口 5：风险等级分布
+    // 接口 5：分布值接口结构
+    // 字段名从 Schema Extraction 输出复制
     // ═══════════════════════════════════════════════════════
-    if (url.includes('/api/v1/dashboard/risk-distribution')) {
+    if (url.includes('{分布接口路径}')) {
         return {
             code: 0,
-            data: { critical: 256, high: 842, medium: 3145, low: 8604 }
+            data: { level_a: 256, level_b: 842, level_c: 3145, level_d: 8604 }
+            // ⚠ 等级字段名必须与参考文档等级名称一致
         };
     }
 
@@ -271,146 +302,82 @@
 **在你的主函数中，必须先获取数据，再构建 DOM：**
 
 ```javascript
-    window.renderDashboard = async function(container, params) {
+    window.renderXxx = async function(container, params) {
     try {
-        // 1. 并发获取页面所需数据
-        var summaryRes = await apiFetch('/api/v1/dashboard/summary');
-        var hostsRes = await apiFetch('/api/v1/assets/hosts/high-risk?limit=5');
-        var trendRes = await apiFetch('/api/v1/dashboard/attack-trend?days=7');
-        var distRes = await apiFetch('/api/v1/dashboard/risk-distribution');
-        var alertsRes = await apiFetch('/api/v1/alerts?limit=8');
-        
-        var summary = summaryRes.data;
-        var hosts = hostsRes.data.items;
-        var trendData = trendRes.data.points;
-        var distribution = distRes.data;
-        var alerts = alertsRes.data.items;
-        
-        // 2. 构建 HTML 字符串（使用提取到的数据，不在字符串中写死）
+        // 1. 并发获取页面所需数据（接口路径从 Schema Extraction 输出复制）
+        var resA = await apiFetch('{汇总接口路径}');
+        var resB = await apiFetch('{列表接口路径}?page=1&page_size=10');
+        var resC = await apiFetch('{时序接口路径}?days=30');
+        var resD = await apiFetch('{分布接口路径}');
+
+        var summary = resA.data;
+        var items = resB.data.items;
+        var trendData = resC.data.points;
+        var distribution = resD.data;
+
+        // 2. 构建 HTML 字符串
         var html = '';
-        html += '<div class="dashboard-container">';
-        
-        // KPI 卡片区（指标名称必须与 page_dashboard.md §1.2.1 一致）
+        html += '<div class="page-container">';
+
+        // KPI 卡片区（指标名称从 Schema "KPI指标"行逐字复制）
         html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:24px;">';
         html += '  <div class="glass-card card-layer-1">';
-        html += '    <div class="stat-card__value">' + summary.total_assets.toLocaleString() + '</div>';
-        html += '    <div class="stat-card__label">受控主机资产数</div>';
-        html += '  </div>';
-        html += '  <div class="glass-card card-layer-1">';
-        html += '    <div class="stat-card__value">' + summary.critical_risks.toLocaleString() + '</div>';
-        html += '    <div class="stat-card__label">高危风险资产数</div>';
-        html += '  </div>';
-        html += '  <div class="glass-card card-layer-1">';
-        html += '    <div class="stat-card__value">' + summary.alerts_24h.toLocaleString() + '</div>';
-        html += '    <div class="stat-card__label">实时威胁告警数</div>';
+        html += '    <div class="stat-card__value">' + summary._metric_a.toLocaleString() + '</div>';
+        html += '    <div class="stat-card__label">{KPI名1 — 从Schema复制}</div>';
         html += '  </div>';
         html += '</div>';
-        
-        // 图表区（图表类型必须与 page_dashboard.md §1.2.2 一致）
+
+        // 图表区（图表类型从 Schema "图表"行匹配）
         html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:24px;">';
-        html += '  <div class="chart-container card-layer-2" id="chart-attack-trend"><div class="section-title" style="padding:12px;">流量攻击趋势</div></div>';
-        html += '  <div class="chart-container card-layer-2" id="chart-risk-dist"><div class="section-title" style="padding:12px;">风险等级分布</div></div>';
+        html += '  <div class="chart-container card-layer-2" id="chart-trend"><div class="section-title" style="padding:12px;">{图表标题1}</div></div>';
+        html += '  <div class="chart-container card-layer-2" id="chart-dist"><div class="section-title" style="padding:12px;">{图表标题2}</div></div>';
         html += '</div>';
-        
-        // 高危主机表格
+
+        // 数据表格（列头从 Schema "表格列头"行逐字复制）
         html += '<div class="card-layer-3" style="border-radius:var(--radius-card);overflow:hidden;">';
-        html += '<div class="section-title" style="padding:16px;">高危风险资产 TOP 5</div>';
+        html += '<div class="section-title" style="padding:16px;">{列表标题}</div>';
         html += '<table class="data-table data-table--striped data-table--sticky"><thead><tr>';
-        html += '<th>主机名称</th><th>IP 地址</th><th>操作系统</th><th>CVE 编号</th><th>CVSS 评分</th><th>操作</th>';
+        html += '<th>{列1}</th><th>{列2}</th><th>{列3}</th><th>{列4}</th><th>操作</th>';
         html += '</tr></thead><tbody>';
-        for (var i = 0; i < hosts.length; i++) {
-            var h = hosts[i];
+        for (var i = 0; i < items.length; i++) {
+            var row = items[i];
             html += '<tr>';
-            html += '<td>' + h.host_name + '</td>';
-            html += '<td>' + h.ip_address + '</td>';
-            html += '<td>' + h.os_name + ' ' + h.os_version + '</td>';
-            html += '<td>' + h.cve_id + '</td>';
-            html += '<td class="col-threat ' + (h.cvss_score >= 9 ? 'critical' : 'high') + '">' + h.cvss_score + '</td>';
-            html += '<td><button class="btn btn-outline btn-detail" data-host-id="' + h.host_id + '">风险详情</button></td>';
+            html += '<td>' + row._label + '</td>';
+            html += '<td>' + row._num + '</td>';
+            html += '<td><span class="badge badge-' + (row._level || 'high') + '">' + (row._level || 'high') + '</span></td>';
+            html += '<td><button class="btn btn-outline btn-detail" data-id="' + row._id + '">详情</button></td>';
             html += '</tr>';
         }
         html += '</tbody></table></div>';
-        
-        // 实时攻击监测列表（字段必须与 page_dashboard.md §1.2.3 一致：源IP + 攻击载荷/类型 + 处置状态）
-        html += '<div class="card-layer-3" style="margin-top:20px;border-radius:var(--radius-card);overflow:hidden;">';
-        html += '<div class="section-title" style="padding:16px;">实时攻击监测</div>';
-        html += '<table class="data-table data-table--striped data-table--sticky"><thead><tr>';
-        html += '<th>时间</th><th>源 IP</th><th>目标 IP</th><th>攻击载荷/类型</th><th>威胁等级</th><th>处置状态</th><th>操作</th>';
-        html += '</tr></thead><tbody>';
-        for (var j = 0; j < alerts.length; j++) {
-            var a = alerts[j];
-            html += '<tr>';
-            html += '<td>' + a.timestamp + '</td>';
-            html += '<td>' + a.src_ip + '</td>';
-            html += '<td>' + a.dst_ip + '</td>';
-            html += '<td>' + a.attack_type + '</td>';
-            html += '<td><span class="badge badge-' + a.level + '">' + a.level + '</span></td>';
-            html += '<td>' + a.status + '</td>';
-            html += '<td><button class="btn btn-outline btn-dispose" data-alert-id="' + a.alert_id + '">处置</button></td>';
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
-        
-        html += '</div>'; // end dashboard-container
-        
+
+        html += '</div>';
+
         container.innerHTML = html;
-        
-        // 3. 路由联动绑定（使用原生 DOM API 绑定事件）
+
+        // 3. 路由联动绑定
         var detailBtns = container.querySelectorAll('.btn-detail');
-        detailBtns.forEach(function(btn, index) {
+        detailBtns.forEach(function(btn) {
             btn.onclick = function() {
-                var hostId = btn.getAttribute('data-host-id');
-                router.navigate('/host-risk', { hostId: hostId });
+                var itemId = btn.getAttribute('data-id');
+                router.navigate('/target-route', { id: itemId });
             };
         });
-        
-        var disposeBtns = container.querySelectorAll('.btn-dispose');
-        disposeBtns.forEach(function(btn, index) {
-            btn.onclick = function() {
-                var alertId = btn.getAttribute('data-alert-id');
-                router.navigate('/attack', { alertId: alertId });
-            };
-        });
-        
-        // 4. 初始化 ECharts（在 innerHTML 写入后）
-        var trendDom = container.querySelector('#chart-attack-trend');
+
+        // 4. 初始化 ECharts
+        var trendDom = container.querySelector('#chart-trend');
         if (trendDom) {
             var trendChart = echarts.init(trendDom, 'dark-cyber');
             trendChart.setOption({
-                // 使用 trendData 构建图表配置
                 tooltip: { trigger: 'axis' },
-                legend: { data: ['入站攻击', '出站流量'], textStyle: { color: 'var(--color-text-secondary)' } },
-                grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-                xAxis: {
-                    type: 'category',
-                    data: trendData.map(function(p) { return p.date; }),
-                    axisLabel: { color: 'var(--color-text-secondary)' }
-                },
-                yAxis: {
-                    type: 'value',
-                    axisLabel: { color: 'var(--color-text-secondary)' }
-                },
+                xAxis: { type: 'category', data: trendData.map(function(p) { return p.date; }) },
+                yAxis: { type: 'value' },
                 series: [
-                    {
-                        name: '入站攻击',
-                        type: 'line',
-                        data: trendData.map(function(p) { return p.inbound; }),
-                        smooth: true,
-                        lineStyle: { color: 'var(--color-danger)' },
-                        itemStyle: { color: 'var(--color-danger)' }
-                    },
-                    {
-                        name: '出站流量',
-                        type: 'line',
-                        data: trendData.map(function(p) { return p.outbound; }),
-                        smooth: true,
-                        lineStyle: { color: 'var(--color-accent)' },
-                        itemStyle: { color: 'var(--color-accent)' }
-                    }
+                    { name: '{系列1}', type: 'line', data: trendData.map(function(p) { return p.value_a; }), smooth: true },
+                    { name: '{系列2}', type: 'line', data: trendData.map(function(p) { return p.value_b; }), smooth: true }
                 ]
             });
         }
-        
+
     } catch (error) {
         container.innerHTML = '<div class="glass-card" style="text-align:center;padding:48px;"><span class="badge badge-critical">数据加载失败: ' + error.message + '</span></div>';
     }
@@ -488,7 +455,7 @@
                                             图表类型: 饼图/环形图
 /api/v1/alerts?page=1&page_size=10           for k 1→60 + ATK_TYPE_POOL + SRC_IP_POOL
                                             实时攻击监测列表（参考 §1.2.3）
-                                            字段必须包含: src_ip(源IP), attack_type(攻击载荷/类型), status(处置状态: 拦截中/已阻断/已放行/已隔离)
+                                            字段**必须包含**: src_ip(源IP), attack_type(攻击载荷/类型), status(处置状态: 拦截中/已阻断/已放行/已隔离)
 /api/v1/assets/hosts/high-risk?limit=5       从 hosts 总列表中取 cvss_score >= 7.0 的前 5 条
                                             高危风险资产 TOP 5 快速入口
 ```
@@ -499,21 +466,21 @@
 接口路径                                     生成方式 & 字段要求
 /api/v1/assets/hosts?page=1&page_size=10     for i 1→45 + ROLE_POOL + OS_POOL + CVE_POOL + IP动态偏移
                                             主机资产（参考 §2.2.1）
-                                            必须包含: os_name+os_version(资产指纹识别), agent_status(存活监测: online/offline/offline_warning)
-                                            必须包含: mac_address(UUID唯一标识, 用于跨网段资产对齐)
+                                            **必须包含**: os_name+os_version(资产指纹识别), agent_status(存活监测: online/offline/offline_warning)
+                                            **必须包含**: mac_address(UUID唯一标识, 用于跨网段资产对齐)
 /api/v1/assets/hosts/{id}                    从 hosts 列表中按 host_id 查找单条（主机详情弹窗）
 /api/v1/assets/websites?page=1&page_size=10   for i 1→35 + DOMAIN_POOL + SERVER_POOL
                                             网站资产（参考 §2.2.2）
-                                            必须包含: framework(应用框架: Spring Boot/Django/Express), web_server(Nginx/IIS/Apache/Tomcat)
-                                            必须包含: ssl_status(SSL证书有效状态), is_shadow(影子资产标记: true/false)
-                                            必须包含: linked_server_ip(跨层级链路映射: 关联底层服务器IP)
+                                            **必须包含**: framework(应用框架: Spring Boot/Django/Express), web_server(Nginx/IIS/Apache/Tomcat)
+                                            **必须包含**: ssl_status(SSL证书有效状态), is_shadow(影子资产标记: true/false)
+                                            **必须包含**: linked_server_ip(跨层级链路映射: 关联底层服务器IP)
 /api/v1/assets/attack-surface                for i 1→30 端口暴露统计
                                             攻击面测绘（参考 §2.2.4）
-                                            必须包含: open_ports(开放端口列表, 重点关注3389/445/6379/3306)
-                                            必须包含: esi_score(暴露风险指数, 参考文档中的ESI概念)
+                                            **必须包含**: open_ports(开放端口列表, 重点关注3389/445/6379/3306)
+                                            **必须包含**: esi_score(暴露风险指数, 参考文档中的ESI概念)
 /api/v1/assets/traffic-stats                 for day 1→7 + 面积图数据
                                             流量风险画像（参考 §2.2.3）
-                                            必须包含: protocol_type(协议分类: HTTP/DNS/SSH/非标), is_anomaly(是否异常基线偏离)
+                                            **必须包含**: protocol_type(协议分类: HTTP/DNS/SSH/非标), is_anomaly(是否异常基线偏离)
 ```
 
 ### 主机风险 (host-risk) — 参考 `page_host_risk.md`
@@ -522,21 +489,21 @@
 接口路径                                     生成方式 & 字段要求
 /api/v1/host-risks/vulnerabilities            for i 1→50 + CVE_POOL + host_id动态关联 + cvss动态梯度
                                             风险台账（参考 §3.2.1）
-                                            必须包含: mac_address(底层物理MAC, 用于资产对齐追踪), device_interface(网络设备接口)
-                                            必须包含: fix_status(修复状态流转: open→in_progress→fixed), vuln_trend(漏洞趋势: new/fixed/unchanged)
+                                            **必须包含**: mac_address(底层物理MAC, 用于资产对齐追踪), device_interface(网络设备接口)
+                                            **必须包含**: fix_status(修复状态流转: open→in_progress→fixed), vuln_trend(漏洞趋势: new/fixed/unchanged)
 /api/v1/host-risks/scan-tasks                 for i 1→20 扫描任务
                                             漏洞扫描引擎（参考 §3.2.2）
-                                            必须包含: target_type(异构环境: linux_vm/windows_physical/esxi/container)
-                                            必须包含: thread_pool_size(线程池配置), io_timeout_ms(I/O超时阈值, 防拥塞调度)
+                                            **必须包含**: target_type(异构环境: linux_vm/windows_physical/esxi/container)
+                                            **必须包含**: thread_pool_size(线程池配置), io_timeout_ms(I/O超时阈值, 防拥塞调度)
 /api/v1/host-risks/scan-schedules             for i 1→8 Cron调度
                                             周期漏扫与差异分析（参考 §3.2.3）
-                                            必须包含: cron_expression(标准Cron表达式), new_vulns_count(新增漏洞), fixed_vulns_count(已修复漏洞)
+                                            **必须包含**: cron_expression(标准Cron表达式), new_vulns_count(新增漏洞), fixed_vulns_count(已修复漏洞)
                                             增量差异高亮展示: "新增"标红 + "已修复"标绿
 /api/v1/host-risks/config-audits              for i 1→15 + CHECK_ITEM_POOL
                                             基线配置核查（参考 §3.2.4）
-                                            必须包含: collect_protocol(采集协议: SNMPv3/SSH/WMI, 无Agent模式)
-                                            必须包含: compliance_standard(合规标准: 等保2.0/CIS Benchmark/自定义)
-                                            必须包含: check_result(pass/fail/warning)
+                                            **必须包含**: collect_protocol(采集协议: SNMPv3/SSH/WMI, 无Agent模式)
+                                            **必须包含**: compliance_standard(合规标准: 等保2.0/CIS Benchmark/自定义)
+                                            **必须包含**: check_result(pass/fail/warning)
 ```
 
 ### 网站风险 (web-risk) — 参考 `page_web_risk.md`
@@ -545,23 +512,23 @@
 接口路径                                     生成方式 & 字段要求
 /api/v1/web-risks/websites                    for i 1→30 + DOMAIN_POOL + SERVER_POOL
                                             网站台账（参考 §4.2.1）
-                                            必须包含: framework(应用框架自动识别), web_server(Web服务器类型)
-                                            必须包含: ssl_expiry_date(SSL证书有效期), linked_server_ip(跨层级链路映射至底层服务器)
+                                            **必须包含**: framework(应用框架自动识别), web_server(Web服务器类型)
+                                            **必须包含**: ssl_expiry_date(SSL证书有效期), linked_server_ip(跨层级链路映射至底层服务器)
 /api/v1/web-risks/vulnerabilities             for i 1→40 + OWASP_CATEGORY_POOL
                                             深度漏洞扫描引擎（参考 §4.2.2）
-                                            必须包含: owasp_category(OWASP Top 10分类: A01-A10)
-                                            必须包含: is_spa_detected(是否SPA架构: Vue/React/传统MPA)
-                                            必须包含: vuln_type(SQLi/XSS/XXE/反序列化/SSRF/IDOR)
+                                            **必须包含**: owasp_category(OWASP Top 10分类: A01-A10)
+                                            **必须包含**: is_spa_detected(是否SPA架构: Vue/React/传统MPA)
+                                            **必须包含**: vuln_type(SQLi/XSS/XXE/反序列化/SSRF/IDOR)
 /api/v1/web-risks/monitor-status              for i 1→20 + HTTP状态码 + TTFB动态值
                                             安全监测中心（参考 §4.2.3）
-                                            必须包含: is_heavy_guard(是否重保增强监测模式)
-                                            必须包含: darklink_found(暗链检测结果), tamper_detected(篡改检测结果)
-                                            必须包含: ttfb_ms(首字节时间), status_code(HTTP状态码), uptime_pct(可用性SLA)
+                                            **必须包含**: is_heavy_guard(是否重保增强监测模式)
+                                            **必须包含**: darklink_found(暗链检测结果), tamper_detected(篡改检测结果)
+                                            **必须包含**: ttfb_ms(首字节时间), status_code(HTTP状态码), uptime_pct(可用性SLA)
 /api/v1/web-risks/pentest-tasks               for i 1→12 渗透测试任务
                                             自动化渗透测试（参考 §4.2.4）
-                                            必须包含: attack_chain(攻击链路: 边界突破→提权→横向移动)
-                                            必须包含: oob_verified(带外验证状态: DNSLog/HTTPLog/未验证)
-                                            必须包含: vuln_chain_ids(串联的漏洞ID列表)
+                                            **必须包含**: attack_chain(攻击链路: 边界突破→提权→横向移动)
+                                            **必须包含**: oob_verified(带外验证状态: DNSLog/HTTPLog/未验证)
+                                            **必须包含**: vuln_chain_ids(串联的漏洞ID列表)
 ```
 
 ### 攻击事件 (attack) — 参考 `page_attack.md`
@@ -570,29 +537,29 @@
 接口路径                                     生成方式 & 字段要求
 /api/v1/attacks/events                        for i 1→60 + ATK_TYPE_POOL + SRC_IP_POOL
                                             实时态势监测中心（参考 §5.2.1）
-                                            必须包含: attack_phase(攻击阶段: 资产发现→漏洞利用→权限维持)
-                                            必须包含: cluster_id(聚类事件ID, 多源数据聚类分析)
+                                            **必须包含**: attack_phase(攻击阶段: 资产发现→漏洞利用→权限维持)
+                                            **必须包含**: cluster_id(聚类事件ID, 多源数据聚类分析)
 /api/v1/attacks/alerts/stats                  for i 1→8 按 ATK_TYPE_POOL 分组统计 count
                                             8类威胁告警矩阵（参考 §5.2.2）:
                                             1-应用漏洞类(SQLi/RCE) 2-暴力破解类(SSH/DB) 3-异常通信类(C2/DNS隧道)
                                             4-横向移动类(WMI/SMB) 5-数据外泄类(离群流量) 6-恶意代码类(WebShell)
                                             7-中间件安全类(Nginx/Redis未授权) 8-诱捕告警类(蜜罐触发)
-                                            字段必须包含: alert_category(1-8分类), category_name, count, trend
+                                            字段**必须包含**: alert_category(1-8分类), category_name, count, trend
 /api/v1/attacks/whitelist                     for i 1→15 白名单 IP/CIDR
 /api/v1/attacks/block-policies                for i 1→10 阻断策略
                                             自动化阻断（参考 §5.2.4）
-                                            必须包含: block_type(IP黑名单/区域封禁/协议过滤/TLS指纹拦截)
-                                            必须包含: confidence_score(攻击置信度阈值), is_auto_block(是否自动下发封禁)
+                                            **必须包含**: block_type(IP黑名单/区域封禁/协议过滤/TLS指纹拦截)
+                                            **必须包含**: confidence_score(攻击置信度阈值), is_auto_block(是否自动下发封禁)
 /api/v1/attacks/agents                        for i 1→25 Agent节点
                                             分布式Agent架构（参考 §5.2.4）
-                                            必须包含: agent_tech(eBPF内核/用户态), heartbeat_status(心跳状态)
-                                            必须包含: version(Agent版本, 用于静默升级管理)
+                                            **必须包含**: agent_tech(eBPF内核/用户态), heartbeat_status(心跳状态)
+                                            **必须包含**: version(Agent版本, 用于静默升级管理)
 /api/v1/attacks/honeypots                     for i 1→6 蜜罐
                                             蜜罐诱捕防御体系（参考 §5.2.3）
-                                            必须包含: honeypot_type(service: SSH/MySQL/Redis / application: Web/Git/OA / file: 文档诱饵)
-                                            必须包含: lure_level(诱饵仿真等级)
+                                            **必须包含**: honeypot_type(service: SSH/MySQL/Redis / application: Web/Git/OA / file: 文档诱饵)
+                                            **必须包含**: lure_level(诱饵仿真等级)
 /api/v1/attacks/honeypot-events               for i 1→30 诱捕事件
-                                            必须包含: src_ip(攻击源IP), attack_payload(攻击载荷详情), capture_path(完整攻击路径复现)
+                                            **必须包含**: src_ip(攻击源IP), attack_payload(攻击载荷详情), capture_path(完整攻击路径复现)
 ```
 
 ### 系统管理 (system)
