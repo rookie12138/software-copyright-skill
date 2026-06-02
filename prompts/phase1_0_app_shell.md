@@ -65,7 +65,16 @@
     <!-- Header + Content -->
     <div id="main-area">
         <header id="header">...</header>
-        <main id="app-content"></main>
+        <main id="app-content">
+            <!-- 骨架屏（数据就绪后由 View Component 整体替换） -->
+            <div class="cyber-skeleton">
+                <div class="skeleton-header"></div>
+                <div class="skeleton-grid">
+                    <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                </div>
+                <div class="skeleton-table"></div>
+            </div>
+        </main>
     </div>
     <!-- Scripts -->
     <!-- 0. 全局配置（双模 API 适配器开关，必须在所有 View Component 之前加载） -->
@@ -191,6 +200,14 @@ body {
 .sub-tabs { display: flex; gap: 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px; }
 .sub-tab { padding: 10px 20px; cursor: pointer; font-size: 13px; color: var(--color-text-secondary); border-bottom: 2px solid transparent; }
 .sub-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+
+/* === 骨架屏（数据加载中占位） === */
+.cyber-skeleton { animation: skeleton-pulse 1.5s ease-in-out infinite; }
+.skeleton-header { width: 40%; height: 20px; background: rgba(255,255,255,0.06); border-radius: 4px; margin-bottom: 24px; }
+.skeleton-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+.skeleton-card { height: 80px; background: rgba(255,255,255,0.06); border-radius: var(--radius-card); }
+.skeleton-table { height: 200px; background: rgba(255,255,255,0.04); border-radius: var(--radius-card); }
+@keyframes skeleton-pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
 ```
 
 ### 4. js/router.js
@@ -228,7 +245,7 @@ const Router = {
 
     _render: async function() {
         var container = document.getElementById('app-content');
-        container.innerHTML = '';
+        /* 不清空容器——保留骨架屏，等 View Component 数据就绪后整体替换 */
 
         var handler = this._routes[this._currentRoute];
         if (handler) {

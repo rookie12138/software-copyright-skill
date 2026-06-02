@@ -68,9 +68,13 @@
         <!-- === View Component 挂载点 === -->
         <!-- 所有 FE-Agent 生成的页面渲染到此容器内 -->
         <main id="app-content">
-            <!-- 初始加载中状态 -->
-            <div class="loading-skeleton">
-                <div class="loading-skeleton__text">正在加载...</div>
+            <!-- 骨架屏（数据就绪后由 View Component 整体替换） -->
+            <div class="cyber-skeleton">
+                <div class="skeleton-header"></div>
+                <div class="skeleton-grid">
+                    <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                </div>
+                <div class="skeleton-table"></div>
             </div>
         </main>
     </div>

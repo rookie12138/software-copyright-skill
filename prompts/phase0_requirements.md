@@ -114,9 +114,29 @@
 }
 ```
 
----
+此外，`colors.css` 末尾**必须追加**以下高级体验代码（拦截浏览器原生丑陋元素）：
 
-**产出 2：`design-system/effects.css` — 毛玻璃特效系统**
+```css
+/* === 定制极简滚动条 === */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }
+
+/* === 文字流光渐变（用于首页超大指标 .stat-card__value 或大标题） === */
+.text-gradient-accent {
+    background: linear-gradient(135deg, #fff 20%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* === 等宽数字（保证数字跳动时宽度不乱晃） === */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
+}
+```
+
+---
 
 ```css
 /* === 毛玻璃面板 === */

@@ -49,7 +49,7 @@ Phase 0 ────────→ Phase 1 ────────────
 
 | 产出物 | 文件路径 | 说明 |
 |--------|---------|------|
-| 色彩矩阵 CSS 变量 | `design-system/colors.css` | 主色 → 辅助色 → 中性色，每色 9 级透明度映射 |
+| 色彩矩阵 CSS 变量 | `design-system/colors.css` | 主色 → 辅助色 → 中性色，每色 9 级透明度映射；末尾追加定制滚动条、文字流光渐变、等宽数字 |
 | 玻璃拟态特效 CSS | `design-system/effects.css` | `.glass-card`、`.glass-panel`、`.glass-sidebar` 等毛玻璃类 |
 | 状态标签系统 | `design-system/badges.css` | `.badge-critical`、`.badge-high`、`.badge-warning`、`.badge-info` 渐变背景 |
 | ECharts 暗黑主题 | `design-system/echarts-dark-theme.js` | 完整 ECharts 主题 JS（挂载为 window.ECHARTS_DARK_CYBER_THEME），配色与全局变量一致 |
@@ -107,6 +107,7 @@ Phase 0 ────────→ Phase 1 ────────────
 6. **数据指标卡片**：统一使用 `.glass-card` 类名（毛玻璃卡片效果）
 7. **表格规范**：统一使用 `table.data-table` + `data-table--striped`（斑马纹）+ `data-table--sticky`（表头冻结）
 8. **状态标签**：使用 design-system 的 `.badge-critical`、`.badge-high` 等类，禁止自创标签样式
+9. **骨架屏**：`<main id="app-content">` 内置骨架屏 `.cyber-skeleton`（脉冲动画），路由切换时不清空容器，等 View Component 数据就绪后整体替换
 
 **执行指令**：加载 `prompts/phase1_0_app_shell.md`。
 
@@ -142,6 +143,9 @@ Phase 0 ────────→ Phase 1 ────────────
    - 严禁手写 JSON 数组、严禁 `// ... 省略` 注释
 4. **路由跳转联动**：涉及"查看详情"或跨模块跳转时，必须调用 `router.navigate()` 并传递参数
 5. **组件函数签名统一**：`window.renderXxx = async function(container, params)`，容器 DOM 节点，`params` 是路由参数对象
+6. **异构视图（破除唯表格论）**：攻击溯源数据必须用 Timeline 时间线视图，报文/Payload 必须用 Terminal 终端模拟器视图，Dashboard 核心数字必须用极大字体+tabular-nums
+7. **高阶图表**：风险画像/攻击面必须用雷达图（Radar），资产链路/攻击拓扑必须用力导向关系图（Force-Directed Graph）
+8. **骨架屏平滑切场**：不要在渲染开始前清空容器，等所有 `await apiFetch()` 完成后再用 `container.innerHTML = html` 整体替换骨架屏
 
 **路由跳转联动规则（增强截图连贯性）：**
 

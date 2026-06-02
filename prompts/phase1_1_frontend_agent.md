@@ -253,6 +253,21 @@
 
 ## 组件渲染规范
 
+### 异构视图指令（强制遵守）
+
+**绝对禁止将所有数据都用 `<table>` 展示！** 你必须根据数据语义采用更高级的视图形态：
+
+1. **攻击溯源（Timeline 视图）**：攻击事件和渗透测试的攻击路径数据，必须生成"剧本式时间线"视图——左侧带竖线和发光圆点（`.timeline-dot`），右侧展示事件卡片。严禁用表格平铺攻击链路。
+2. **报文与代码解析（Terminal View）**：任何包含 Payload 报文、十六进制日志、HTTP 请求头的数据，必须生成"黑客终端模拟器"——包裹在带有 Mac 风格红黄绿三个控制点（`.mac-dots`）的深色代码窗中。严禁用表格展示原始报文。
+3. **极简大数字卡片**：Dashboard 的核心数字必须引入 `font-variant-numeric: tabular-nums;`，数字极大（48px），标题极小（12px），形成强烈的排版张力。严禁所有指标卡片字体大小千篇一律。
+
+### 高阶图表渲染指令（强制遵守）
+
+除了折线图和饼图，以下业务场景必须使用对应的高阶图表类型：
+
+1. **雷达图（Radar Chart）**：资产风险画像或攻击面测绘，**禁止使用柱状图**，必须使用 ECharts 雷达图。雷达的填充区域需使用半透明色（配合当前主题的 `--color-danger` / `--color-warning` 变量），展现多维安全态势。
+2. **力导向关系图（Force-Directed Graph）**：涉及"资产链路（Asset Linkage）"或"攻击拓扑"的模块，必须使用 ECharts 的 `graph` 类型。节点使用发光圆，连线设置 `curveness: 0.2`（微小弧线），模拟真实的内网物理拓扑关系。
+
 **在你的主函数中，必须先获取数据，再构建 DOM：**
 
 ```javascript
@@ -599,6 +614,7 @@
 4. 每个文件用 IIFE 包裹，`apiFetch` 为闭包内私有函数，只暴露 `window.renderXxx`
 5. `window.renderXxx` 为 `async function`，通过闭包内的 `apiFetch()` 获取数据
 6. 路由跳转使用 `router.navigate(route, params)`
+7. **骨架屏平滑切场**：不要在渲染开始前清空容器（`container.innerHTML = ''`）。等到所有 `await apiFetch()` 完成并构建好 `html` 字符串后，再使用 `container.innerHTML = html` 整体替换掉原本的骨架屏，实现无白屏平滑切场
 
 ---
 
