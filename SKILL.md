@@ -240,7 +240,7 @@ if (handler) {
 
 ## Phase 2：后端代码生成（垂直切片三层架构）
 
-**目标**：紧贴 `openapi.yaml` 和 `database_schema.sql`，分三个子阶段生成 10000+ 行工业级后端代码。
+**目标**：紧贴 `openapi.yaml` 和 `database_schema.sql`，分三个子阶段生成 10000+ 行工业级后端代码。核心策略：**业务纵深模拟**——Service 层禁止简单的 Repository 代理，必须植入高并发聚合、安全领域算法、DTO/VO 严格映射、数据填充引擎四种复杂逻辑。
 
 **核心策略**：不再让一个 Agent 一次性输出 2500 行必截断的代码。改为分三次调度，每次只生成一层：
 
@@ -254,7 +254,7 @@ if (handler) {
 |------|---------|------|---------|
 | 2.1 | `GENERATE_MODELS` | `model/*.go` (18个实体) | GORM tags + JSON snake_case tags，与前端 apiFetch Mock 数据字段名一致 |
 | 2.2 | `GENERATE_REPOSITORIES` | `repository/*.go` (18个 DAO) | 分页查询、条件筛选、批量插入(事务)、ErrRecordNotFound 处理 |
-| 2.3 | `GENERATE_SERVICES` | `service/*.go` + `controller/*.go` + `main.go` | 业务聚合、errgroup/WaitGroup 并发、slog 日志、Gin 路由注册 |
+| 2.3 | `GENERATE_SERVICES` | `service/*.go`（含算法层+Seeder）+ `controller/*.go` + `main.go` | 高并发聚合(errgroup)、安全领域算法(CVSS/CIDR/流量基线)、DTO/VO严格映射、数据填充引擎 |
 
 **去 AI 化**：每层生成时即加载 `references/deai_rules.md` 强制执行。
 

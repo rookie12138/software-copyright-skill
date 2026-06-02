@@ -223,10 +223,28 @@ var (
    - 统一的响应格式封装
    - 每个模块的 Controller 独立一个文件
 
-**Service 层输出示例**：
+### 针对 Service 层的"工业级业务纵深"指令（强制执行以确保代码厚度）
+
+为了达到企业级 SOC 平台的代码规模（确保向 10000 行目标迈进），你的 Service 层代码绝对不能是简单的 Repository 代理（Passthrough）。你必须在 Service 层植入以下四种复杂逻辑：
+
+**1. 高并发数据聚合（Concurrent Aggregation）：** 在处理例如 `DashboardSummary` 或 `AssetDetail` 这种需要多张表数据的接口时，**禁止使用单条长 SQL 连表查询**。你必须使用 `golang.org/x/sync/errgroup` 或 `sync.WaitGroup` 配合 `context.WithTimeout`，发起多个并发 Goroutine 去不同的 Repository 拉取数据，然后在 Service 层进行结构体拼装。请务必处理并发过程中的 panic 恢复（recover）和超时错误。
+
+**2. 安全领域的独立算法层（Domain Algorithm Simulation）：** 在 `service` 目录下，除了业务逻辑，必须生成特定领域的计算服务文件。例如：
+   - 生成 `cvss_calculator.go`：包含一个针对主机漏洞进行 CVSS v3 评分计算的详细函数（包含复杂的 if/else 权重判定）
+   - 生成 `subnet_scanner.go`：包含对 IP 网段 (CIDR) 进行解析和切割的数学算法逻辑
+   - 生成 `traffic_analyzer.go`：包含对流量峰值进行基线对比（标准差计算）的统计学函数
+
+**3. 企业级 DTO/VO 严格映射：** 严禁将 `model.HostAsset` 这种数据库模型直接丢给 Controller 返回！
+   - 你必须在 Service 层定义 `XxxListVO` 和 `XxxDetailVO`
+   - 必须手写（禁止用反射库）例如 `func mapHostModelToVO(m *model.HostAsset) HostDetailVO` 的转换函数，在转换过程中对空值、时间格式（RFC3339）进行冗长的二次处理
+   - 这不仅能增加极其合规的代码行数，更能体现严格的数据层隔离
+
+**4. 内置数据填充引擎（Data Seeder）：** 请在 Service 层生成一个 `data_seeder.go` 文件。该文件包含大量的循环和预设字典（如操作系统列表、常见漏洞名），用于在数据库初始化时通过 GORM 批量插入测试数据。这与前端的 Mock 数据逻辑相呼应
+
+**Service 层输出示例（高并发聚合版）**：
 
 ```go
-// service/asset_service.go
+// service/dashboard_service.go
 package service
 
 import (
@@ -236,137 +254,170 @@ import (
     "sync"
     "time"
 
+    "golang.org/x/sync/errgroup"
     "{module}/model"
     "{module}/repository"
 )
 
-// AssetService 资产中心业务服务。
-type AssetService struct {
-    hostRepo *repository.HostAssetRepository
-    webRepo  *repository.WebAssetRepository
+// DashboardSummaryVO 首页聚合视图对象。
+type DashboardSummaryVO struct {
+    TotalAssets       int64                    `json:"total_assets"`
+    CriticalAlerts    int64                    `json:"critical_alerts"`
+    AttackTrends      []AttackTrendItem        `json:"attack_trends"`
+    AssetDistribution []AssetDistItem          `json:"asset_distribution"`
+    RecentAlerts      []AlertListItem          `json:"recent_alerts"`
 }
 
-func NewAssetService(hostRepo *repository.HostAssetRepository, webRepo *repository.WebAssetRepository) *AssetService {
-    return &AssetService{hostRepo: hostRepo, webRepo: webRepo}
+// AttackTrendItem 攻击趋势时间点。
+type AttackTrendItem struct {
+    Date    string `json:"date"`
+    Inbound int    `json:"inbound"`
+    Outbound int   `json:"outbound"`
 }
 
-// QueryHosts 分页查询主机资产。
-func (s *AssetService) QueryHosts(ctx context.Context, filter map[string]interface{}, page, pageSize int) ([]model.HostAsset, int64, error) {
-    offset := (page - 1) * pageSize
-    hosts, total, err := s.hostRepo.QueryByFilter(ctx, filter, offset, pageSize)
-    if err != nil {
-        slog.Error("query_hosts_failed", "page", page, "error", err)
-        return nil, 0, fmt.Errorf("query hosts: %w", err)
-    }
-    slog.Info("hosts_queried", "total", total, "page", page)
-    return hosts, total, nil
+// AssetDistItem 资产分布项。
+type AssetDistItem struct {
+    Category string `json:"category"`
+    Count    int64  `json:"count"`
 }
 
-// ProbeHostReachability 并发探测指定 CIDR 范围内主机的可达性。
-func (s *AssetService) ProbeHostReachability(ctx context.Context, ipList []string, timeout time.Duration) []model.HostProbeResult {
-    ctx, cancel := context.WithTimeout(ctx, timeout)
+// AlertListItem 告警列表简项。
+type AlertListItem struct {
+    AlertID   string `json:"alert_id"`
+    Type      string `json:"type"`
+    Severity  string `json:"severity"`
+    SourceIP  string `json:"source_ip"`
+    Timestamp string `json:"timestamp"`
+}
+
+// DashboardService 首页聚合服务。
+type DashboardService struct {
+    hostRepo   *repository.HostAssetRepository
+    alertRepo  *repository.AlertRepository
+    vulnRepo   *repository.VulnerabilityRepository
+}
+
+func NewDashboardService(
+    hostRepo *repository.HostAssetRepository,
+    alertRepo *repository.AlertRepository,
+    vulnRepo *repository.VulnerabilityRepository,
+) *DashboardService {
+    return &DashboardService{hostRepo: hostRepo, alertRepo: alertRepo, vulnRepo: vulnRepo}
+}
+
+// GetSummary 高并发聚合首页概览数据。
+func (s *DashboardService) GetSummary(ctx context.Context) (*DashboardSummaryVO, error) {
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
     defer cancel()
 
-    var mu sync.Mutex
-    var results []model.HostProbeResult
-    var wg sync.WaitGroup
+    var vo DashboardSummaryVO
+    g, gCtx := errgroup.WithContext(ctx)
 
-    for _, ip := range ipList {
-        wg.Add(1)
-        go func(targetIP string) {
-            defer wg.Done()
-            defer func() {
-                if r := recover(); r != nil {
-                    slog.Error("probe_goroutine_panic", "ip", targetIP, "panic", r)
-                }
-            }()
+    // 并发拉取资产总数
+    g.Go(func() error {
+        defer func() {
+            if r := recover(); r != nil {
+                slog.Error("asset_count_panic", "panic", r)
+            }
+        }()
+        total, err := s.hostRepo.CountAll(gCtx)
+        if err != nil {
+            return fmt.Errorf("count assets: %w", err)
+        }
+        vo.TotalAssets = total
+        return nil
+    })
 
-            reachable := probeTCPConnect(ctx, targetIP, 3*time.Second)
-            mu.Lock()
-            results = append(results, model.HostProbeResult{
-                IP:        targetIP,
-                Reachable: reachable,
-                Timestamp: time.Now(),
-            })
-            mu.Unlock()
-        }(ip)
+    // 并发拉取危急告警数
+    g.Go(func() error {
+        defer func() {
+            if r := recover(); r != nil {
+                slog.Error("critical_alert_panic", "panic", r)
+            }
+        }()
+        count, err := s.alertRepo.CountBySeverity(gCtx, "critical")
+        if err != nil {
+            return fmt.Errorf("count critical alerts: %w", err)
+        }
+        vo.CriticalAlerts = count
+        return nil
+    })
+
+    // 并发拉取攻击趋势
+    g.Go(func() error {
+        defer func() {
+            if r := recover(); r != nil {
+                slog.Error("attack_trend_panic", "panic", r)
+            }
+        }()
+        trends, err := s.alertRepo.QueryTrend(gCtx, 7)
+        if err != nil {
+            return fmt.Errorf("query attack trends: %w", err)
+        }
+        vo.AttackTrends = mapAlertTrendToVO(trends)
+        return nil
+    })
+
+    // 并发拉取资产分布
+    g.Go(func() error {
+        defer func() {
+            if r := recover(); r != nil {
+                slog.Error("asset_dist_panic", "panic", r)
+            }
+        }()
+        dist, err := s.hostRepo.GroupByCategory(gCtx)
+        if err != nil {
+            return fmt.Errorf("group assets: %w", err)
+        }
+        vo.AssetDistribution = mapAssetDistToVO(dist)
+        return nil
+    })
+
+    if err := g.Wait(); err != nil {
+        slog.Error("dashboard_summary_failed", "error", err)
+        return nil, fmt.Errorf("aggregate dashboard: %w", err)
     }
-    wg.Wait()
-    return results
+
+    slog.Info("dashboard_summary_ok", "assets", vo.TotalAssets, "alerts", vo.CriticalAlerts)
+    return &vo, nil
 }
 ```
 
-**Controller 层输出示例**：
+**Controller 层输出示例（VO 映射版）**：
 
 ```go
-// controller/asset_controller.go
+// controller/dashboard_controller.go
 package controller
 
 import (
     "net/http"
-    "strconv"
 
     "github.com/gin-gonic/gin"
     "{module}/service"
 )
 
-// AssetController 资产中心控制器。
-type AssetController struct {
-    svc *service.AssetService
+// DashboardController 首页控制器。
+type DashboardController struct {
+    svc *service.DashboardService
 }
 
-func NewAssetController(svc *service.AssetService) *AssetController {
-    return &AssetController{svc: svc}
+func NewDashboardController(svc *service.DashboardService) *DashboardController {
+    return &DashboardController{svc: svc}
 }
 
-// RegisterRoutes 注册资产相关路由。
-func (c *AssetController) RegisterRoutes(r *gin.RouterGroup) {
-    r.GET("/hosts", c.ListHosts)
-    r.GET("/hosts/:hostId", c.GetHost)
-    r.GET("/websites", c.ListWebsites)
-    r.GET("/attack-surface", c.GetAttackSurface)
-    r.GET("/traffic-stats", c.GetTrafficStats)
+// RegisterRoutes 注册首页相关路由。
+func (c *DashboardController) RegisterRoutes(r *gin.RouterGroup) {
+    r.GET("/summary", c.GetSummary)
 }
 
-// ListHosts 分页查询主机列表。
-func (c *AssetController) ListHosts(ctx *gin.Context) {
-    page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
-    pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "10"))
-
-    filter := map[string]interface{}{}
-    if status := ctx.Query("status"); status != "" {
-        filter["status"] = status
-    }
-    if keyword := ctx.Query("keyword"); keyword != "" {
-        filter["keyword"] = keyword
-    }
-
-    hosts, total, err := c.svc.QueryHosts(ctx.Request.Context(), filter, page, pageSize)
+// GetSummary 获取首页聚合数据。
+func (c *DashboardController) GetSummary(ctx *gin.Context) {
+    vo, err := c.svc.GetSummary(ctx.Request.Context())
     if err != nil {
-        ctx.JSON(http.StatusInternalServerError, gin.H{"code": 50001, "message": "查询主机资产失败"})
+        ctx.JSON(http.StatusInternalServerError, gin.H{"code": 50001, "message": "获取概览数据失败"})
         return
     }
-
-    ctx.JSON(http.StatusOK, gin.H{
-        "code": 0,
-        "data": gin.H{
-            "total":     total,
-            "page":      page,
-            "page_size": pageSize,
-            "items":     hosts,
-        },
-    })
-}
-
-// GetHost 获取主机详情。
-func (c *AssetController) GetHost(ctx *gin.Context) {
-    hostID := ctx.Param("hostId")
-    host, err := c.svc.GetHostByID(ctx.Request.Context(), hostID)
-    if err != nil {
-        ctx.JSON(http.StatusNotFound, gin.H{"code": 40004, "message": "主机不存在"})
-        return
-    }
-    ctx.JSON(http.StatusOK, gin.H{"code": 0, "data": host})
+    ctx.JSON(http.StatusOK, SuccessResponse(vo))
 }
 ```
 
@@ -403,7 +454,7 @@ func SuccessResponse(data interface{}) gin.H {
 
 - `GENERATE_MODELS` → 输出 `model/*.go`
 - `GENERATE_REPOSITORIES` → 输出 `repository/*.go`（含 `errors.go`）
-- `GENERATE_SERVICES` → 输出 `service/*.go` + `controller/*.go` + `main.go`
+- `GENERATE_SERVICES` → 输出 `service/*.go`（含 `cvss_calculator.go`、`subnet_scanner.go`、`traffic_analyzer.go`、`data_seeder.go`）+ `controller/*.go` + `main.go`
 
 **代码行数目标**：三个切片合计 >= 10000 行，每行必须是有效业务代码。
 
