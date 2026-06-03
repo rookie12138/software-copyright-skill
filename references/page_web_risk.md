@@ -33,4 +33,44 @@
 * **渗透报告可视化导入**：支持以 Excel 报表格式直接导入外部或内部的渗透测试报告，形成标准化台账。
 * **渗透测试风险大屏**：以可视化图表展现漏洞风险级别比例、风险应用分布比例。
 * **漏洞状态跟踪闭环**：对渗透报告中的漏洞进行全生命周期跟踪确认，记录处置状态流转（未整改 -> 已整改 -> 忽略）。
-* **[UI 呈现要求]**：渗透测试漏洞的“处置状态流转记录”，**严禁使用表格平铺**！必须使用左侧带有发光圆点的 **Timeline（时间线）视图** 呈现（如：报告导入 -> 确认漏洞 -> 研发修复 -> 复测通过），提供剧本式的审计体验。
+* **[UI 呈现要求]**：渗透测试漏洞的"处置状态流转记录"，**严禁使用表格平铺**！必须使用左侧带有发光圆点的 **Timeline（时间线）视图** 呈现（如：报告导入 -> 确认漏洞 -> 研发修复 -> 复测通过），提供剧本式的审计体验。
+
+---
+
+## API Schema（前端组件唯一数据权威）
+
+> 以下接口定义是本模块前端代码生成的**唯一权威来源**。`view_component_template.js` 和 `phase1_1_frontend_agent.md` 中的示例字段均不具权威性。当前后两者与本文档冲突时，以本文档为准。
+
+### GET /api/v1/web-risks/websites?page=1&page_size=10
+- **业务来源**: §4.2.1 网站台账与内容合规审查
+- **必含字段**: site_id, domain, framework(应用框架自动识别: Spring Boot/Django/Express), web_server(Web服务器类型: Nginx/Apache/IIS/Tomcat), ssl_status(SSL证书有效状态), ssl_expiry_date(SSL证书有效期), is_shadow(影子资产标记: true/false), linked_server_ip(跨层级链路映射至底层服务器), sensitive_file_count, content_audit_status
+- **表格列头**: 域名 | 框架 | Web服务器 | SSL状态 | SSL到期 | 影子资产 | 关联服务器 | 操作
+- **KPI指标**: 网站总数 | 影子资产 | SSL告警 | 敏感文件
+- **图表**: 跨层级链路力导向图(Force-Directed Graph)
+- **Mock生成**: for i 1→30 + DOMAIN_POOL + WEB_SERVER_POOL
+- **种子池**: DOMAIN_POOL, WEB_SERVER_POOL, FRAMEWORK_POOL
+
+### GET /api/v1/web-risks/vulnerabilities?page=1&page_size=10
+- **业务来源**: §4.2.2 Web日志分析与深度扫描
+- **必含字段**: vuln_id, site_id, domain, vuln_type(SQLi/XSS/XXE/反序列化/SSRF/IDOR), owasp_category(OWASP Top 10分类: A01-A10), is_spa_detected(是否SPA架构: Vue/React/传统MPA), severity, poc_payload, request_raw, response_raw, status
+- **表格列头**: 域名 | 漏洞类型 | OWASP分类 | SPA检测 | 严重等级 | 状态 | 操作
+- **KPI指标**: 漏洞总数 | 高危漏洞 | SQLi | XSS
+- **图表**: 无（POC Payload用Terminal视图展示）
+- **Mock生成**: for i 1→40 + OWASP_CATEGORY_POOL
+- **种子池**: OWASP_POOL
+
+### GET /api/v1/web-risks/monitor-status?page=1&page_size=10
+- **业务来源**: §4.2.3 8维度安全监测中心
+- **必含字段**: site_id, domain, vuln_status, tamper_detected(篡改检测结果), darklink_found(暗链检测结果), sensitive_word_found, webshell_detected, availability_status, dns_hijack_status, is_heavy_guard(是否重保增强监测模式), ttfb_ms(首字节时间), status_code(HTTP状态码), uptime_pct(可用性SLA)
+- **表格列头**: 域名 | 篡改检测 | 暗链检测 | 敏感词 | 网马 | 可用性 | TTFB | 重保模式 | 操作
+- **KPI指标**: 监测网站数 | 篡改告警 | 暗链告警 | 可用率
+- **图表**: 雷达图(Radar Chart) — 从"漏洞、篡改、黑链、敏感文件、敏感词、网马、可用性、域名劫持"8个维度展现
+- **Mock生成**: for i 1→20 + HTTP状态码 + TTFB动态值
+
+### GET /api/v1/web-risks/pentest-tasks?page=1&page_size=10
+- **业务来源**: §4.2.4 自动化渗透测试台账
+- **必含字段**: task_id, target_domain, attack_chain(攻击链路: 边界突破→提权→横向移动), oob_verified(带外验证状态: DNSLog/HTTPLog/未验证), vuln_chain_ids(串联的漏洞ID列表), severity, status, reporter, report_date
+- **表格列头**: 目标域名 | 攻击链路 | OOB验证 | 严重等级 | 状态 | 报告日期 | 操作
+- **KPI指标**: 渗透任务数 | 高危占比 | 已整改 | 未整改
+- **图表**: 无（攻击链路用Timeline视图，处置状态流转用Timeline视图）
+- **Mock生成**: for i 1→12 渗透测试任务

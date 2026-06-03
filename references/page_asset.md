@@ -33,4 +33,53 @@
 通过旁路流量镜像技术对海量流量进行采集，提供全网视角的流量健康度体检。
 * **多维协议与资产定性**：基于 80000+ 威胁特征库，实时解构全网流量，区分 HTTP、DNS、SSH 等标准业务流量与潜在的非标端口数据传输。
 * **异常基线对比**：通过机器学习建立流量正常基线。结合攻击源、风险等级、命中规则数，自动识别流量激增或异常会话。
-* **[UI 呈现要求]**：针对流量画像评估，**禁止使用柱状图**。必须使用 **ECharts 雷达图 (Radar Chart)**，配合当前主题的半透明告警色（color-mix），从“协议合规性、基线偏离度、异常会话率、暴露风险指数 (ESI)”等多个维度展现动态风险面貌。
+* **[UI 呈现要求]**：针对流量画像评估，**禁止使用柱状图**。必须使用 **ECharts 雷达图 (Radar Chart)**，配合当前主题的半透明告警色（color-mix），从"协议合规性、基线偏离度、异常会话率、暴露风险指数 (ESI)"等多个维度展现动态风险面貌。
+
+---
+
+## API Schema（前端组件唯一数据权威）
+
+> 以下接口定义是本模块前端代码生成的**唯一权威来源**。`view_component_template.js` 和 `phase1_1_frontend_agent.md` 中的示例字段均不具权威性。当前后两者与本文档冲突时，以本文档为准。
+
+### GET /api/v1/assets/hosts?page=1&page_size=10
+- **业务来源**: §2.2.1 主机资产精细化管理
+- **必含字段**: host_id, host_name, ip_address, mac_address(UUID唯一标识, 用于跨网段资产对齐), agent_status(存活监测: online/offline/offline_warning), os_name, os_version(资产指纹识别), device_type(设备类型: 服务器/网络设备/IoT/打印机/摄像头), multi_nic(多网卡状态: true/false), cve_id, cvss_score, status
+- **表格列头**: 主机名称 | IP地址 | MAC/UUID标识 | Agent状态 | 设备类型 | 多网卡状态 | CVSS评分 | 操作
+- **KPI指标**: 受控主机资产数 | 高危风险资产数 | 在线Agent数 | 离线预警数
+- **图表**: 资产链路力导向图(Force-Directed Graph) — 以主机为中心节点
+- **Mock生成**: for i 1→45 + ROLE_POOL + OS_POOL + CVE_POOL + IP动态偏移
+- **种子池**: ROLE_POOL, OS_POOL, CVE_POOL
+
+### GET /api/v1/assets/hosts/{id}
+- **业务来源**: §2.2.1 主机资产精细化管理 — 详情弹窗
+- **必含字段**: host_id, host_name, ip_address, mac_address, agent_status, os_name, os_version, device_type, multi_nic, cve_id, cvss_score, vuln_name, discovered_at, status
+- **表格列头**: 无（详情弹窗）
+- **KPI指标**: 无
+- **图表**: 无
+- **Mock生成**: 从 hosts 列表中按 host_id 查找单条
+
+### GET /api/v1/assets/websites?page=1&page_size=10
+- **业务来源**: §2.2.2 网站资产自动化台账
+- **必含字段**: site_id, domain, framework(应用框架: Spring Boot/Django/Express), web_server(Nginx/IIS/Apache/Tomcat), ssl_status(SSL证书有效状态), ssl_expiry_date(SSL证书有效期), is_shadow(影子资产标记: true/false), linked_server_ip(跨层级链路映射: 关联底层服务器IP)
+- **表格列头**: 域名 | 框架 | Web服务器 | SSL状态 | 影子资产 | 关联服务器 | 操作
+- **KPI指标**: 网站资产总数 | 影子资产数 | SSL告警数 | 关联率
+- **图表**: 跨层级链路力导向图(Force-Directed Graph) — curveness:0.2 微小弧线流光连线
+- **Mock生成**: for i 1→35 + DOMAIN_POOL + WEB_SERVER_POOL
+- **种子池**: DOMAIN_POOL, WEB_SERVER_POOL, FRAMEWORK_POOL
+
+### GET /api/v1/assets/attack-surface
+- **业务来源**: §2.2.3 互联网暴露面与攻击面监测
+- **必含字段**: asset_id, domain, sub_domain, resolved_ip, site_title, status_code, open_ports(开放端口列表, 重点关注3389/445/6379/3306), esi_score(暴露风险指数), exposed_emails, sensitive_files
+- **表格列头**: 域名 | 子域名 | 解析IP | 开放端口 | ESI指数 | 暴露文件 | 操作
+- **KPI指标**: 暴露面资产数 | 高危暴露数 | 敏感文件数 | 泄露邮箱数
+- **图表**: 无
+- **Mock生成**: for i 1→30 + 端口暴露统计
+- **种子池**: DOMAIN_POOL, PORT_POOL
+
+### GET /api/v1/assets/traffic-stats
+- **业务来源**: §2.2.4 流量风险画像分析
+- **必含字段**: ip, protocol_type(协议分类: HTTP/DNS/SSH/非标), is_anomaly(是否异常基线偏离), risk_score, hit_rules, traffic_volume
+- **表格列头**: IP地址 | 协议分类 | 异常标记 | 风险评分 | 命中规则数 | 流量大小 | 操作
+- **KPI指标**: 监控流量源数 | 异常流量数 | 命中规则数 | 基线偏离率
+- **图表**: 雷达图(Radar Chart) — 从"协议合规性、基线偏离度、异常会话率、暴露风险指数(ESI)"多维度展现
+- **Mock生成**: for i 1→25 + 种子数据

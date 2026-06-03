@@ -33,4 +33,50 @@
 将复杂的安全态势转化为可供管理层决策的标准化报告。
 * **多维综合报表生成**：支持每月、每周、每季度自动生成整体安全运营报表、外部攻击面报表、内部攻击面报表及核心安全事件报表。
 * **精细化筛选导出**：可基于资产范围、物理位置、责任人、部门、时间、模块等条件，一键生成并导出 Word、Excel 格式的审查报告文件。
-* **[UI 呈现要求]**：报表维度的综合健康度展示，**禁止使用柱状图**。必须使用 **ECharts 雷达图 (Radar Chart)** 结合半透明色（color-mix），从“边界防护、主机安全、合规配置、响应速度”等维度展示单位的安全运营水位。
+* **[UI 呈现要求]**：报表维度的综合健康度展示，**禁止使用柱状图**。必须使用 **ECharts 雷达图 (Radar Chart)** 结合半透明色（color-mix），从"边界防护、主机安全、合规配置、响应速度"等维度展示单位的安全运营水位。
+
+---
+
+## API Schema（前端组件唯一数据权威）
+
+> 以下接口定义是本模块前端代码生成的**唯一权威来源**。`view_component_template.js` 和 `phase1_1_frontend_agent.md` 中的示例字段均不具权威性。当前后两者与本文档冲突时，以本文档为准。
+
+### GET /api/v1/dashboard/summary
+- **业务来源**: §1.2.1 全景态势大屏 — 高亮核心 KPI 指标
+- **必含字段**: total_assets(受控主机资产数), critical_risks(高危风险资产数), alerts_24h(实时威胁告警数), protection_coverage(防护覆盖率)
+- **KPI指标**: 受控主机资产数 | 高危风险资产数 | 实时威胁告警数 | 防护覆盖率
+- **表格列头**: 无（聚合值接口）
+- **图表**: 无（纯数值）
+- **Mock生成**: 静态聚合值，total_assets=12847, critical_risks=326, alerts_24h=1892, protection_coverage=94.7
+
+### GET /api/v1/dashboard/attack-trend?days=30
+- **业务来源**: §1.2.1 全景态势大屏 — 流量攻击趋势图
+- **必含字段**: date, inbound(入站攻击数), outbound(出站流量数)
+- **表格列头**: 无（时序数据）
+- **KPI指标**: 无
+- **图表**: 渐变面积图(Area Gradient) — 绝对禁止细线折线图，必须用向下渐隐面积的面积图，隐藏背景网格线
+- **Mock生成**: for day 1→30 + Math.sin(day/3.5)*350 + Math.cos(day/4.2)*180 + Math.random()*250，baseInbound=1200, baseOutbound=400
+
+### GET /api/v1/dashboard/risk-distribution
+- **业务来源**: §1.2.1 全景态势大屏 — 风险等级分布
+- **必含字段**: critical(危急), high(高危), medium(中危), low(低危)
+- **表格列头**: 无（分布值）
+- **KPI指标**: 无
+- **图表**: 环形图(Doughnut)
+- **Mock生成**: 静态分布值，critical=256, high=842, medium=3145, low=8604
+
+### GET /api/v1/assets/hosts/high-risk?limit=5
+- **业务来源**: §1.2.1 全景态势大屏 — 高危风险资产 TOP 5 快速入口
+- **必含字段**: host_id, host_name, ip_address, os_name, os_version, cve_id, cvss_score, status
+- **表格列头**: 主机名称 | IP地址 | 操作系统 | CVE编号 | CVSS评分 | 操作
+- **KPI指标**: 无
+- **图表**: 无
+- **Mock生成**: 从 hosts 总列表中取 cvss_score >= 7.0 的前 5 条
+
+### GET /api/v1/alerts?page=1&page_size=10
+- **业务来源**: §1.2.3 AI智能体综合研判 — 实时攻击监测列表
+- **必含字段**: alert_id, timestamp, src_ip(源IP), dst_ip(目标IP), attack_type(攻击载荷/类型), level(威胁等级), status(处置状态: intercepted拦截中/blocked已阻断/passed已放行/isolated已隔离)
+- **表格列头**: 时间 | 源IP | 目标IP | 攻击载荷/类型 | 威胁等级 | 处置状态 | 操作
+- **KPI指标**: 无
+- **图表**: 无
+- **Mock生成**: for k 1→60 + ATK_TYPE_POOL + SRC_IP_POOL
